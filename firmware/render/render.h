@@ -62,6 +62,10 @@ extern void render_debug(bool IsVidexMode, bool top);
 extern void copy_str(uint8_t* dest, const char* pMsg);
 extern void int2hex(uint8_t* pStrBuf, uint32_t value, uint32_t digits);
 
+#ifdef FEATURE_A2C
+extern void render_a2c();
+#endif
+
 //#define FEATURE_TEST_TMDS
 
 #ifdef FEATURE_TEST_TMDS

@@ -320,7 +320,11 @@ void DELAYED_COPY_CODE(render_loop)()
                     }
                     else
                     {
+#ifdef FEATURE_A2C
+                        render_a2c();
+#else
                         render_hires();
+#endif
                     }
                     break;
                 case SOFTSW_HIRES_MODE|SOFTSW_MIX_MODE: //6

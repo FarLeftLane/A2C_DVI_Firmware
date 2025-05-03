@@ -34,6 +34,12 @@ SOFTWARE.
 #include "menu/menu.h"
 #include "debug/debug.h"
 
+#ifdef FEATURE_A2C
+#include <stdio.h>
+#include <pico/stdlib.h>
+#include "a2c/a2c.h"
+#endif 
+
 #include "fonts/textfont.h"
 
 #ifdef FEATURE_TEST
@@ -55,8 +61,10 @@ int main()
     // enable LED etc
     debug_init();
 
+#ifndef FEATURE_A2C
     // check hardware
     a2dvi_check_hardware();
+#endif 
 
     // load config settings
     config_load();
@@ -66,8 +74,14 @@ int main()
     // cycle through the test cases
     multicore_launch_core1(test_loop);
 #else
+#ifdef FEATURE_A2C
+    // process the Apple IIc SEROUT video connector signals on core 1
+    multicore_launch_core1(a2c_loop);
+#else
     // process the Apple II bus interface on core 1
     multicore_launch_core1(abus_loop);
+#endif
+
 #endif
     boot_time = to_us_since_boot(get_absolute_time());
 

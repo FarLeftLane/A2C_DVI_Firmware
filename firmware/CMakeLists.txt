@@ -1,17 +1,21 @@
-cmake_minimum_required(VERSION 3.18)
+# Generated Cmake Pico project file
+
+cmake_minimum_required(VERSION 3.13)
 
 # firmware version
-set(FW_VERSION "1.7")
+set(FW_VERSION "1.7.4")
 message(STATUS "Building firmware version ${FW_VERSION}")
 
 option(FEATURE_PICO2 "Build project for PICO2 (RP2350) instead of original PICO (RP2040)" OFF)
 option(FEATURE_TEST  "Build test firmware instead of normal firmware" OFF)
+option(FEATURE_A2C  "Build A2C firmware instead of normal firmware" ON)
 
 set(PICO_STDIO_UART OFF)
 set(PICO_STDIO_USB  OFF)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if (FEATURE_PICO2)
     set(FAMILY rp2350)
@@ -27,7 +31,16 @@ else()
     message(STATUS "Building for PICO (RP2040)...")
 endif()
 
+if (FEATURE_A2C)
+set(BINARY_NAME "A2C_DVI_v${FW_VERSION}${FW_TYPE}")
+else()
 set(BINARY_NAME "A2DVI_v${FW_VERSION}${FW_TYPE}")
+endif()
+
+if (FEATURE_A2C)
+    message(STATUS "Building A2C version")
+    add_compile_options(-DFEATURE_A2C)
+endif()
 
 if (FEATURE_TEST)
     message(STATUS "Building TEST version")
@@ -38,23 +51,29 @@ else()
     message(STATUS "Building Release version")
 endif()
 
-set(BOARD pico_sdk)
+# Initialise pico_sdk from installed location
+# (note this can come from environment, CMake cache etc)
 
-# Pull in SDK (must be before project)
-include(cmake/pico_sdk_import.cmake)
-message(STATUS "Detected PICO_SDK version: ${PICO_SDK_VERSION_MAJOR}.${PICO_SDK_VERSION_MINOR}.${PICO_SDK_VERSION_REVISION}")
-
-# Check SDK version
-if (${PICO_SDK_VERSION_MAJOR} LESS "2")
-    message(FATAL_ERROR "PICO_SDK 2.0.0 or newer is required. Please upgrade your SDK.")
+# == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
+if(WIN32)
+    set(USERHOME $ENV{USERPROFILE})
+else()
+    set(USERHOME $ENV{HOME})
 endif()
-
-if (${PICO_SDK_VERSION_MAJOR} GREATER "2")
-    message(WARNING "Your newer PICO_SDK version is untested. Currently A2DVI is tested with PICO_SDK 2.x. Consider using an older SDK.")
+set(sdkVersion 2.1.1)
+set(toolchainVersion 14_2_Rel1)
+set(picotoolVersion 2.1.1)
+set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
+if (EXISTS ${picoVscode})
+    include(${picoVscode})
 endif()
+# ====================================================================================
+set(PICO_BOARD pico CACHE STRING "Board type")
 
-enable_language(C CXX ASM)
-project(A2DVI C CXX ASM)
+# Pull in Raspberry Pi Pico SDK (must be before project)
+include(pico_sdk_import.cmake)
+
+project(${BINARY_NAME} C CXX ASM)
 
 # enable compiler warnings
 add_compile_options(-Wall)
@@ -68,18 +87,20 @@ add_compile_options(-DFW_VERSION="${FW_VERSION}")
 add_link_options(-Wl,--wrap=weak_raw_vprintf)
 add_link_options(-Wl,--wrap=panic)
 
-# just for debugging
-#add_compile_options(-DFEATURE_DEBUG_COUNTER)
-
+# Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-include(../libraries/libdvi/CMakeLists.txt)
+# include(./libraries/libdvi/CMakeLists.txt)
 
-add_executable(${BINARY_NAME}
+# Add executable. Default name is the project name, version 0.1
+
+add_executable(${BINARY_NAME} 
     main.c
     applebus/abus.c
     applebus/abus_setup.c
     applebus/buffers.c
+
+    a2c/a2c.c
 
     dvi/a2dvi.c
     dvi/tmds.c
@@ -137,26 +158,65 @@ add_executable(${BINARY_NAME}
     fonts/videx/videx_spanish.c
     fonts/videx/videx_symbol.c
 
-    ${TEST_SOURCES}
-)
+    ../libraries/libdvi/dvi.c
+    ../libraries/libdvi/dvi.h
+    ../libraries/libdvi/dvi_config_defs.h
+    ../libraries/libdvi/dvi_serialiser.c
+    ../libraries/libdvi/dvi_serialiser.h
+    ../libraries/libdvi/dvi_timing.c
+    ../libraries/libdvi/dvi_timing.h
+    ../libraries/libdvi/tmds_encode.S
+    ../libraries/libdvi/tmds_encode.c
+    ../libraries/libdvi/tmds_encode.h
+    ../libraries/libdvi/tmds_table.h
+    ../libraries/libdvi/tmds_table_fullres.h
+    ../libraries/libdvi/util_queue_u32_inline.h
+     )
 
-target_compile_options(${BINARY_NAME} PRIVATE -Wall)
+pico_set_program_name(${BINARY_NAME} "A2C_DVI")
+pico_set_program_version(${BINARY_NAME} "1.7.1")
 
-target_link_libraries(${BINARY_NAME}
-    pico_runtime_init
-    pico_runtime
-    pico_multicore
-    pico_util
-    hardware_flash
-    hardware_vreg
-    hardware_clocks
-    libdvi
-)
-
-target_include_directories(${BINARY_NAME} PUBLIC lib/PicoDVI/software/include)
-target_include_directories(${BINARY_NAME} PUBLIC assets .)
-
+# Generate PIO header
+# pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_LIST_DIR}/blink.pio)
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/applebus/abus.pio)
+pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/libdvi/dvi_serialiser.pio)
+pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/libdvi/tmds_encode_1bpp.pio)
+pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/a2c/a2c_SEROUT.pio)
+
+# Modify the below lines to enable/disable output over UART/USB
+pico_enable_stdio_uart(${BINARY_NAME} 0)
+pico_enable_stdio_usb(${BINARY_NAME} 1)
+
+# Add the standard library to the build
+target_link_libraries(${BINARY_NAME}
+        pico_stdlib)
+
+# Add the standard include files to the build
+target_include_directories(${BINARY_NAME} PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}
+)
+
+target_include_directories(${BINARY_NAME} PRIVATE ./../libraries/libdvi)
+
+
+# Add any user requested libraries
+target_link_libraries(${BINARY_NAME} 
+        pico_base_headers
+        pico_runtime_init
+        pico_runtime
+        pico_multicore
+        pico_util
+        hardware_flash
+        hardware_vreg
+        hardware_clocks
+        hardware_dma
+        hardware_pio
+        hardware_interp
+        hardware_pwm
+        pico_stdlib
+        )
+
+# pico_add_extra_outputs(${BINARY_NAME})
 
 pico_set_binary_type(${BINARY_NAME} copy_to_ram)
 
@@ -165,3 +225,4 @@ pico_add_extra_outputs(${BINARY_NAME})
 
 # use platform-specific linker script
 pico_set_linker_script(${BINARY_NAME} ${A2DVI_LINK_SCRIPT})
+

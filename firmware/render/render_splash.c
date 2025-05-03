@@ -69,6 +69,9 @@ char DELAYED_COPY_DATA(pLogo)[] =
 char DELAYED_COPY_DATA(pSplashMsg_0[]) = "APPLE II DIGITAL VIDEO";
 char DELAYED_COPY_DATA(pSplashMsg_1[]) = "COPYRIGHT 2024";
 char DELAYED_COPY_DATA(pSplashMsg_2[]) = "THORSTEN BREHM & RALLE PALAVEEV";
+#ifdef FEATURE_A2C
+char DELAYED_COPY_DATA(pSplashMsg_3[]) = "MIKE NEIL";
+#endif 
 
 char DELAYED_COPY_DATA(pStatus6502_0[]) = "6502 STATUS";
 char DELAYED_COPY_DATA(pStatus6502_1[]) = "BUS CYCLES :";
@@ -116,6 +119,10 @@ void DELAYED_COPY_CODE(render_splash)()
     centerY(LINE_A2DIGITAL,   pSplashMsg_0, PRINTMODE_NORMAL);
     centerY(LINE_COPYRIGHT,   pSplashMsg_1, PRINTMODE_NORMAL);
     centerY(LINE_COPYRIGHT+1, pSplashMsg_2, PRINTMODE_NORMAL);
+#ifdef FEATURE_A2C
+    centerY(LINE_COPYRIGHT+2, pSplashMsg_3, PRINTMODE_NORMAL);
+#endif
+
     centerY(LINE_6502,        pStatus6502_0, PRINTMODE_INVERSE);
     if (bus_cycle_counter < 3*1000)
         centerY(LINE_ACTIVITY,    pStatus6502_4, PRINTMODE_FLASH);

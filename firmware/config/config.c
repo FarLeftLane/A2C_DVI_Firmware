@@ -400,7 +400,11 @@ void config_load_defaults(void)
     SET_IFLAG(0, IFLAGS_PAL);
 
     cfg_scanline_mode       = ScanlinesMonochrome;
+#ifdef FEATURE_A2C
+    cfg_video_mode          = Dvi720x480;                   //  A2C_DVI Change default to 720
+#else
     cfg_video_mode          = Dvi640x480;
+#endif
     cfg_color_style         = 2; // improved
     color_mode              = COLOR_MODE_BW;
     cfg_machine             = MACHINE_AUTO;
