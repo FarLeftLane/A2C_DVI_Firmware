@@ -79,8 +79,8 @@ const uint64_t s_long_button_press = (500 * 1000);  //  500,000 microseconds (ha
 //  We repurpose cfg_color_style, default is 2
 //  We do this so that the config stored in flash doesn't change between firmware (A2DVI and A2C_DVI)
 typedef enum {
-    CS_MIXED       = 2,     //  Default
-    CS_A2DVI       = 1,
+    CS_A2DVI       = 2,     //  Default
+    CS_CLAMP       = 1,
     CS_NTSC        = 0
 } a2c_color_mode_t;
 
@@ -196,19 +196,19 @@ static bool DELAYED_COPY_CODE(color_command)(char * command_name, int index, boo
     if (update == true)
     {
         if (index == 0)
-            cfg_color_style = CS_MIXED;
-        else if (index == 1)
             cfg_color_style = CS_A2DVI;
-        else if (index == 2)
+        else if (index == 1)
             cfg_color_style = CS_NTSC;
+        else if (index == 2)
+            cfg_color_style = CS_CLAMP;
     }
     else
     {
-        if ((index == 0) && (cfg_color_style == CS_MIXED))
+        if ((index == 0) && (cfg_color_style == CS_A2DVI))
             result = true;
-        else if ((index == 1) && (cfg_color_style == CS_A2DVI))
+        else if ((index == 1) && (cfg_color_style == CS_NTSC))
             result = true;
-        else if ((index == 2) && (cfg_color_style == CS_NTSC))
+        else if ((index == 2) && (cfg_color_style == CS_CLAMP))
             result = true;
     }
 
@@ -389,7 +389,7 @@ struct menu_commands DELAYED_COPY_DATA(a2c_menu_items)[] =
 {
     { "MODE:", { {"COLOR", mode_command }, {"MONO", mode_command }, {"MIXED", mode_command } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
-    { "COLOR:", { {"MIXED", color_command }, {"A2DVI", color_command }, {"NTSC", color_command } } },
+    { "COLOR:", { {"A2DVI", color_command }, {"NTSC", color_command }, {"CLAMP", color_command } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
     { "MONO:", { {"B&W", mono_command }, {"GREEN", mono_command }, {"AMBER", mono_command } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
@@ -697,10 +697,13 @@ void DELAYED_COPY_CODE(process_button)()
     }
 }
 
+
+//  These are the render modes that are supported.
 typedef enum {
     RM_BW          = 0,
     RM_A2DVI       = 1,
-    RM_NTSC        = 2
+    RM_NTSC        = 2,
+    RM_CLAMP       = 3
 } a2c_render_mode_mode_t;
 
 static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t render_mode, uint line, volatile uint32_t screen_buffer[192][18])
@@ -726,7 +729,6 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
     {
         uint8_t color_offset = color_mode * 12;                 //  BW, Green, Amber, etc
 
-        uint dot_count = 0;
 
         for(uint i = 0; i < 18; i++)
         {
@@ -741,14 +743,10 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
                 uint32_t dot = ((dots >> 29) & 0x02) | ((dots >> 31) & 0x01);      // second highest bit or'd with highest bit and swapped (highest becomes lowest)
                 uint32_t coffset = color_offset + ((dot) & 0x03);
 
-                if (dot_count < (32 * 18))      //  buffer is 18 32-bit dots
-                {
-                    *(tmdsbuf_red++)   = tmds_mono_pixel_pair[coffset + 0];
-                    *(tmdsbuf_green++) = tmds_mono_pixel_pair[coffset + 4];
-                    *(tmdsbuf_blue++)  = tmds_mono_pixel_pair[coffset + 8];
-                    dots <<= 2;
-                    dot_count = dot_count + 2;
-                }
+                *(tmdsbuf_red++)   = tmds_mono_pixel_pair[coffset + 0];
+                *(tmdsbuf_green++) = tmds_mono_pixel_pair[coffset + 4];
+                *(tmdsbuf_blue++)  = tmds_mono_pixel_pair[coffset + 8];
+                dots <<= 2;
 
                 //  Add 16 more dots
                 if (j == 7)
@@ -810,11 +808,10 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
             }
         }
     }
-    else    //  if (render_mode == RM_NTSC)
+    else if (render_mode == RM_NTSC)
     {
-        //  We are rendering DHGR, we use a different NTSC style color LUT
-        uint oddness = 0;
-        oddness ^= 0x100;
+        //  We are rendering using a 11 bit (NUM_CAP 8 to 4) NTSC style color LUT
+        uint oddness = 0;       //  oddness is real just phase, but only 0 or 2 due to douple pixels
 
         uint dot_count = 0;
 
@@ -830,12 +827,48 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
                 if (dot_count < (32 * 18))      //  buffer is 18 32-bit dots
                 {
                     //  Render DHGR, this inner loop is very timing dependant, too slow and hdmi breaks up
-                    uint dot_pattern = oddness | ((dots >> 24) & 0xff);                                 //  Total of 9 bits, oddness is init to 0x100
+                    uint dot_pattern = (oddness << 2) | ((dots >> 22) & 0x3ff);                                 //  Total of 11 bits
+                    
+                    *(tmdsbuf_red++)   = tmds_hgrdecode_NTSC_8to4_LUT_color_patterns_red[dot_pattern];
+                    *(tmdsbuf_green++) = tmds_hgrdecode_NTSC_8to4_LUT_color_patterns_green[dot_pattern];
+                    *(tmdsbuf_blue++)  = tmds_hgrdecode_NTSC_8to4_LUT_color_patterns_blue[dot_pattern];
+                    
+                    dots <<= 2;
+                    dot_count = dot_count + 2;
+                    oddness ^= 0x100;
+                }
 
-                    *(tmdsbuf_red++)   = tmds_hgrdecode3TMDS_color_patterns_red[dot_pattern];
-                    *(tmdsbuf_green++) = tmds_hgrdecode3TMDS_color_patterns_green[dot_pattern];
-                    *(tmdsbuf_blue++)  = tmds_hgrdecode3TMDS_color_patterns_blue[dot_pattern];
+                //  Consume 16 more dots
+                if (j == 7)
+                    dots = (dots & 0xFFFF0000) | (next_dots >> 16);
+            }
+        }
+    }
+    else if (render_mode == RM_CLAMP)
+    {
+        //  We are rendering using a 9 bit (NUM_CAP 8 to 3, Clamped) NTSC style color LUT
+        uint oddness = 0;
 
+        uint dot_count = 0;
+
+        for(uint i = 0; i < 18; i++)
+        {
+            // Load in the first 32 dots
+            uint32_t dots = screen_buffer[line][i];
+            uint32_t next_dots = (i < 18) ? screen_buffer[line][i+1] : 0;
+
+            // Consume 32 dots, two at a time
+            for(uint j = 0; j < 16; j++)
+            {
+                if (dot_count < (32 * 18))      //  buffer is 18 32-bit dots
+                {
+                    //  Render DHGR, this inner loop is very timing dependant, too slow and hdmi breaks up
+                    uint dot_pattern = oddness | ((dots >> 24) & 0xff);                                 //  Total of 9 bits
+
+                    *(tmdsbuf_red++)   = tmds_hgrdecode8to3_LUT_color_patterns_red[dot_pattern];
+                    *(tmdsbuf_green++) = tmds_hgrdecode8to3_LUT_color_patterns_green[dot_pattern];
+                    *(tmdsbuf_blue++)  = tmds_hgrdecode8to3_LUT_color_patterns_blue[dot_pattern];
+                    
                     dots <<= 2;
                     dot_count = dot_count + 2;
                     oddness ^= 0x100;
@@ -850,6 +883,7 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
 
     dvi_send_scanline(tmdsbuf);
 }
+
 
 
 void DELAYED_COPY_CODE(render_a2c)()
@@ -904,22 +938,17 @@ void DELAYED_COPY_CODE(render_a2c)()
         }
         else
         {
+            a2c_render_mode_mode_t render_mode = RM_A2DVI;      //  s_screen_TEXT_buffer[line], s_screen_GR_buffer[line],
+                
+            if (cfg_color_style == CS_A2DVI)
+                render_mode = RM_A2DVI;
+            else if (cfg_color_style == CS_NTSC)
+                render_mode = RM_NTSC;
+            else if (cfg_color_style == CS_CLAMP)
+                render_mode = RM_CLAMP;
+
             for(uint line = 0; line < 192; line++)
             {
-                a2c_render_mode_mode_t render_mode = RM_A2DVI;      //  s_screen_TEXT_buffer[line], s_screen_GR_buffer[line],
-                
-                if (cfg_color_style == CS_A2DVI)
-                    render_mode = RM_A2DVI;
-                else if (cfg_color_style == CS_NTSC)
-                    render_mode = RM_NTSC;
-                else if (cfg_color_style == CS_MIXED)               //  Mixed color, A2DVI for HGR, NTSC for DHGR
-                {
-                    if ( (s_screen_TEXT_buffer[line] == true) && (s_screen_GR_buffer[line] == true) )
-                        render_mode = RM_NTSC;
-                    else
-                        render_mode = RM_A2DVI;
-                }
-
                 if (cfg_rendering_fx == FX_ENABLED)                 //  Mixed text and graphics, B&W for Text, Color for graphics
                 {
                     if (s_screen_GR_buffer[line] == false)

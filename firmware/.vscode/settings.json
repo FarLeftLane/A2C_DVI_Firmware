@@ -52,6 +52,7 @@
         "buffers.h": "c",
         "menu.h": "c",
         "render.h": "c",
-        "hgrdecode_lut.h": "c"
+        "hgrdecode_lut.h": "c",
+        "variant": "c"
     }
 }
