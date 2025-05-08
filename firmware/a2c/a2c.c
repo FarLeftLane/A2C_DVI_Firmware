@@ -261,7 +261,7 @@ static bool DELAYED_COPY_CODE(mode_command)(char * command_name, int index, bool
             SET_IFLAG(1, IFLAGS_FORCED_MONO);           //  Mono
             cfg_rendering_fx = FX_NONE;
         }
-        else if (index == 1)
+        else if (index == 2)
         {
             SET_IFLAG(0, IFLAGS_FORCED_MONO);           //  Mixed   Default
             cfg_rendering_fx = FX_ENABLED;
@@ -779,6 +779,19 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
         uint oddness = 0;
         uint dot_count = 0;
 
+        //  Due to the encoding, we shift the color part of the screen to the right to align with the B&W text
+        //  This is a timing bug.  I can't seem to do this fix in 640 mode without the video breaking up
+        //  I think reformating the LUTs might help
+
+        if (cfg_video_mode == Dvi720x480)
+        {
+            dot_count = 2;
+
+            *(tmdsbuf_red++)   = TMDS_SYMBOL_0_0;
+            *(tmdsbuf_green++) = TMDS_SYMBOL_0_0;
+            *(tmdsbuf_blue++)  = TMDS_SYMBOL_0_0;
+        }
+
         for(uint i = 0; i < 18; i++)
         {
             // Load in the first 32 dots
@@ -813,14 +826,23 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
         //  We are rendering using a 11 bit (NUM_CAP 8 to 4) NTSC style color LUT
         uint oddness = 0;       //  oddness is real just phase, but only 0 or 2 due to douple pixels
 
-        uint dot_count = 0;
+        //  Due to the NTSC encoding, we shift the color part of the screen to the right to align with the B&W text
+        uint dot_count = 4;
+
+        *(tmdsbuf_red++)   = TMDS_SYMBOL_0_0;
+        *(tmdsbuf_green++) = TMDS_SYMBOL_0_0;
+        *(tmdsbuf_blue++)  = TMDS_SYMBOL_0_0;
+
+        *(tmdsbuf_red++)   = TMDS_SYMBOL_0_0;
+        *(tmdsbuf_green++) = TMDS_SYMBOL_0_0;
+        *(tmdsbuf_blue++)  = TMDS_SYMBOL_0_0;
 
         for(uint i = 0; i < 18; i++)
         {
             // Load in the first 32 dots
             uint32_t dots = screen_buffer[line][i];
             uint32_t next_dots = (i < 18) ? screen_buffer[line][i+1] : 0;
-
+            
             // Consume 32 dots, two at a time
             for(uint j = 0; j < 16; j++)
             {
@@ -848,8 +870,20 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
     {
         //  We are rendering using a 9 bit (NUM_CAP 8 to 3, Clamped) NTSC style color LUT
         uint oddness = 0;
-
         uint dot_count = 0;
+
+        //  Due to the NTSC encoding, we shift the color part of the screen to the right to align with the B&W text
+        //  This is a timing bug.  I can't seem to do this fix in 640 mode without the video breaking up
+        //  I think reformating the LUTs might help
+        
+        if (cfg_video_mode == Dvi720x480)
+        {
+            dot_count = 2;
+            
+            *(tmdsbuf_red++)   = TMDS_SYMBOL_0_0;
+            *(tmdsbuf_green++) = TMDS_SYMBOL_0_0;
+            *(tmdsbuf_blue++)  = TMDS_SYMBOL_0_0;
+        }
 
         for(uint i = 0; i < 18; i++)
         {
