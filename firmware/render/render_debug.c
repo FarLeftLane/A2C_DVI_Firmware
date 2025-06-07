@@ -29,6 +29,10 @@ SOFTWARE.
 #include "menu/menu.h"
 #include "dvi/a2dvi.h"
 
+#ifdef FEATURE_A2C
+extern void update_a2c_debug_monitor(void);
+#endif
+
 uint32_t show_subtitle_cycles;
 
 void DELAYED_COPY_CODE(int2hex)(uint8_t* pStrBuf, uint32_t value, uint32_t digits)
@@ -176,6 +180,12 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
 
 void DELAYED_COPY_CODE(render_debug)(bool IsVidexMode, bool top)
 {
+#ifdef FEATURE_A2C
+    uint8_t color_mode = 0;
+#else
+    uint8_t color_mode = 4;
+#endif
+
     if (!IS_IFLAG(IFLAGS_DEBUG_LINES))
     {
         if ((top)||(show_subtitle_cycles==0))
@@ -204,7 +214,11 @@ void DELAYED_COPY_CODE(render_debug)(bool IsVidexMode, bool top)
     else
     if (top)
     {
+#ifdef FEATURE_A2C
+        update_a2c_debug_monitor();
+#else
         update_debug_monitor();
+#endif
     }
 
     if (top)
@@ -214,8 +228,8 @@ void DELAYED_COPY_CODE(render_debug)(bool IsVidexMode, bool top)
         uint8_t* line2 = &status_line[40];
         if (!IsVidexMode)
         {
-            render_text40_line(line1, 0, 4);
-            render_text40_line(line2, 0, 4);
+            render_text40_line(line1, 0, color_mode);
+            render_text40_line(line2, 0, color_mode);
         }
     }
     else
@@ -224,8 +238,8 @@ void DELAYED_COPY_CODE(render_debug)(bool IsVidexMode, bool top)
         uint8_t* line1 = &status_line[80];
         uint8_t* line2 = &status_line[120];
         if (!IsVidexMode)
-            render_text40_line(line1, 0, 4);
-        render_text40_line(line2, 0, 4);
+            render_text40_line(line1, 0, color_mode);
+        render_text40_line(line2, 0, color_mode);
 
         if (show_subtitle_cycles)
             show_subtitle_cycles--;

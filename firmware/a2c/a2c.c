@@ -36,6 +36,9 @@ SOFTWARE.
 
 #include "config/config.h"
 #include "menu/menu.h"
+#include "debug/debug.h"
+
+#define NO_NTSC_LUT             //  If we need some memory
 
 #include "hgrdecode_LUT.h"
 
@@ -79,6 +82,11 @@ bool s_show_menu_screen = false;           //  Is the menu screen up
 bool s_button_state = false;               //  State of the button
 uint64_t s_last_BUTTON = 0;                //  Last state of the button to track transitions
 const uint64_t s_long_button_press = (500 * 1000);  //  500,000 microseconds (half second)
+
+static uint64_t s_a2c_boot_time = 1;
+static uint64_t s_total_time = 1;
+static uint64_t s_blocking_time = 1;
+
 
 //  We repurpose cfg_color_style, default is 2
 //  We do this so that the config stored in flash doesn't change between firmware (A2DVI and A2C_DVI)
@@ -702,6 +710,139 @@ void DELAYED_COPY_CODE(process_button)()
 }
 
 
+void DELAYED_COPY_CODE(clear_a2c_debug_monitor)(void)
+{
+    // clear status lines
+    for (uint i = 0; i < sizeof(status_line)/4; i++)
+    {
+        ((uint32_t*)status_line)[i] = 0xA0A0A0A0;
+    }    
+}
+
+bool s_debug_monitor_cleared = false;
+char s_temp_line_buffer[40];
+
+void DELAYED_COPY_CODE(update_a2c_debug_monitor)(void)
+{
+    if (s_debug_monitor_cleared == false)
+    {
+        //  Clear the debug monitor text lines
+        clear_a2c_debug_monitor();
+        s_debug_monitor_cleared = true;
+    }
+
+    uint8_t* line1 = status_line;
+    uint8_t* line2 = &status_line[40];
+    uint8_t* line3 = &status_line[80];
+    uint8_t* line4 = &status_line[120];
+
+    if ((frame_counter & 3) == 0)           // do not update too fast, so data remains readable
+    {
+
+        uint32_t total = s_total_time / 1000;
+        uint32_t blocking = s_blocking_time;     //  times 1000 100.0
+        uint32_t blocking_percentage = 1100;     //  Error value, 110.0%
+        if (total != 0)
+            blocking_percentage = blocking / total;
+
+        copy_str(&line1[0], "Blocking %: ");
+        int2str(blocking_percentage, s_temp_line_buffer, 3);
+        copy_str(&line1[12], s_temp_line_buffer);
+
+        copy_str(&line1[20], "Free: ");
+        int2str(getFreeHeap(), s_temp_line_buffer, 10);
+        copy_str(&line1[20+6], s_temp_line_buffer);  
+
+        if (0)
+        {
+            //  Display a bit of screen data
+            int2hex(&line2[0], s_screen_buffer[2][0], 8);
+            int2hex(&line2[9], s_screen_buffer[2][1], 8);
+            int2hex(&line2[18], s_screen_buffer[2][2], 8);
+            int2hex(&line2[18+9], s_screen_buffer[2][3], 8);
+        }
+        else
+        {
+        }
+
+        if (0)
+        {
+            // int x = 0;
+            // int2hex(&lcd_stats_line[x], s_lcd_data, 8);                 //  s_lcd_data
+            // x = x + 8 + 1;
+
+            // int2str(s_cmd_count, s_temp_line_buffer, 8);                //  s_cmd_count
+            // copy_str(&lcd_stats_line[x], s_temp_line_buffer);
+            // x = x + 8 + 1;
+
+        }
+
+        copy_str(&line3[0], "Line 3");
+        copy_str(&line4[0], "Line 4");
+    }
+
+    if ((frame_counter & 0x0F) == 0)         // do not update too fast, so data remains readable
+    {
+        if (0)                              //  Display the command_count
+        {
+            int x = 0;
+
+            for (uint index = 0; index < 256; index++)
+            {
+                if (x < 38)
+                {
+
+                }
+            }
+        }
+    }
+}
+
+void DELAYED_COPY_CODE(render_a2c_debug)(bool IsVidexMode, bool top)
+{
+    uint8_t color_mode = 0;
+
+    if (top)
+    {
+        if (!IS_IFLAG(IFLAGS_DEBUG_LINES))
+        {
+            //  If no debugging, just render black at the top of the screen
+            for (uint row = 0; row < 16; row++)
+            {
+                dvi_get_scanline(tmdsbuf);
+                dvi_scanline_rgb640(tmdsbuf, tmdsbuf_red, tmdsbuf_green, tmdsbuf_blue);
+
+                for (uint32_t x = 0; x < 320; x++)
+                {
+                    *(tmdsbuf_red++)   = TMDS_SYMBOL_0_0;
+                    *(tmdsbuf_green++) = TMDS_SYMBOL_0_0;
+                    *(tmdsbuf_blue++)  = TMDS_SYMBOL_0_0;
+                }
+
+                dvi_send_scanline(tmdsbuf);
+            }
+        }
+        else
+        {
+            update_a2c_debug_monitor();
+
+            // render two debug monitor lines above the screen area
+            uint8_t* line1 = status_line;
+            uint8_t* line2 = &status_line[40];
+            render_text40_line(line1, 0, color_mode);
+            render_text40_line(line2, 0, color_mode);
+        }
+    }
+    else
+    {
+        // render two debug monitor lines below the screen area
+        uint8_t* line3 = &status_line[80];
+        uint8_t* line4 = &status_line[120];
+        render_text40_line(line3, 0, color_mode);
+        render_text40_line(line4, 0, color_mode);
+    }
+}
+
 //  These are the render modes that are supported.
 typedef enum {
     RM_BW          = 0,
@@ -1113,33 +1254,15 @@ bool audio_timer_callback()
 }
 
 
-uint32_t __time_critical_func(pio_get_multiple)()
-{
-    uint32_t result = 0;
-
-    // if (pio_sm_is_rx_fifo_empty(s_pio, s_a2c_sm) == false)
-    {
-        s_a2c_data = pio_sm_get(s_pio, s_a2c_sm);
-        result |= A2C_DATA_RX;
-    }
-
-    /*
-    if (pio_sm_is_rx_fifo_empty(s_pio, s_lcd_sm) == false)
-    {
-        s_lcd_data = pio_sm_get(s_pio, s_lcd_sm);
-        result |= LCD_DATA_RX;
-    }
-    */
-
-    // audio_timer_callback();
-
-    return result;
-}
-
+#if 0
 void __time_critical_func(a2c_loop)()
 {
     // initialize the Apple IIc interface
     a2c_init();
+    s_a2c_boot_time = to_us_since_boot (get_absolute_time());
+
+    //  Turn on debug lines
+    SET_IFLAG(1, IFLAGS_DEBUG_LINES);
 
     //  Loop forever reading from the PIO RX queue
     while (true) 
@@ -1172,11 +1295,48 @@ void __time_critical_func(a2c_loop)()
         bus_cycle_counter++;
     }
 }
-/*
+
+#else
+
+uint32_t __time_critical_func(pio_get_multiple)()
+{
+    uint32_t result = 0;
+
+    if (1)
+    {
+        uint32_t rxdata = pio_sm_get_blocking(s_pio, s_a2c_sm);
+        s_a2c_data = rxdata;
+        result |= A2C_DATA_RX;
+    }
+    else
+    {
+        if (pio_sm_is_rx_fifo_empty(s_pio, s_a2c_sm) == false)
+        {
+            s_a2c_data = pio_sm_get(s_pio, s_a2c_sm);
+            result |= A2C_DATA_RX;
+        }
+    }
+
+    /*
+    if (pio_sm_is_rx_fifo_empty(s_pio, s_lcd_sm) == false)
+    {
+        s_lcd_data = pio_sm_get(s_pio, s_lcd_sm);
+        result |= LCD_DATA_RX;
+    }
+    */
+
+    return result;
+}
+
 void __time_critical_func(a2c_loop)()
 {
     // initialize the Apple IIc interface
     a2c_init();
+
+    s_a2c_boot_time = to_us_since_boot (get_absolute_time());
+
+    //  Turn on debug lines
+    SET_IFLAG(1, IFLAGS_DEBUG_LINES);
 
     int x = 0;      //  These are the a2c "screen" indexes
     int y = 0;
@@ -1184,7 +1344,13 @@ void __time_critical_func(a2c_loop)()
     //  Loop forever reading from the PIO RX queue
     while (true) 
     {
+        uint64_t start_time = to_us_since_boot (get_absolute_time());
+
         uint32_t rxflags = pio_get_multiple();
+
+        uint64_t end_time = to_us_since_boot (get_absolute_time());
+        s_total_time = end_time - s_a2c_boot_time;
+        s_blocking_time = s_blocking_time + (end_time - start_time);
 
         if ((rxflags & A2C_DATA_RX) != 0)
         {
@@ -1208,8 +1374,11 @@ void __time_critical_func(a2c_loop)()
             x = (x + 1) % 18;
         }
 
+        //  Process some audio
+        audio_timer_callback();
+
         //  We increment this just so the diagnostics show there is activity
         bus_cycle_counter++;
     }
 }
-    */
+#endif
