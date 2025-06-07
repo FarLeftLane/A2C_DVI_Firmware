@@ -226,7 +226,7 @@ SOFTWARE.
     };
 
 
-
+/*
      // compress_LUT NUM_TAPS: 8, NUM_TAPS_COMPRESS: 4, switchToMSB dump_hgr_LUT_compress_Sharp phaseShift: 0
      // hires hgrdecode_NTSC_8to4_LUT color pattern:
      uint32_t DELAYED_COPY_DATA(tmds_hgrdecode_NTSC_8to4_LUT_color_patterns_red)[2048] = {
@@ -1004,3 +1004,4 @@ SOFTWARE.
         0xBFE00, 0xBFE00, 0x3FE00, 0x3FA00, 0xBFE00, 0xBFE00, 0x6FF, 0x80EFF
     };
 
+*/

@@ -81,6 +81,8 @@ add_compile_options(-Wall)
 # At 640pixels each TMDS buffer requires 3840bytes
 add_compile_options(-DDVI_N_TMDS_BUFFERS=8)
 
+add_compile_options(-O2)
+
 add_compile_options(-DFW_VERSION="${FW_VERSION}")
 
 # wrap/disable some library symbols, to speed up the boot time (reduce code)
@@ -171,6 +173,10 @@ add_executable(${BINARY_NAME}
     ../libraries/libdvi/tmds_table.h
     ../libraries/libdvi/tmds_table_fullres.h
     ../libraries/libdvi/util_queue_u32_inline.h
+    ../libraries/libdvi/audio_ring.c
+    ../libraries/libdvi/audio_ring.h
+    ../libraries/libdvi/data_packet.c
+    ../libraries/libdvi/data_packet.h
      )
 
 pico_set_program_name(${BINARY_NAME} "A2C_DVI")

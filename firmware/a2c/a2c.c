@@ -53,27 +53,31 @@ SOFTWARE.
 #define PIO_INPUT_PIN_BASE 0    //  SEROUT is 0
 
 //  WNDW IRQ data structures
-volatile uint64_t s_last_WNDW = 0;              //  Last time we saw WNDW go low in microseconds
-volatile uint32_t s_scanline = 0;               //  What scan line are we on (0-191) based on WNDW interrupts
+uint64_t s_last_WNDW = 0;              //  Last time we saw WNDW go low in microseconds
+uint32_t s_scanline = 0;               //  What scan line are we on (0-191) based on WNDW interrupts
 struct repeating_timer s_repeating_timer;       //  We use a repeating timer to tell if WNDW has stopped
 bool s_sync_found = false;                      //  We set this true in the WNDW handler and set it false when the timer doesn't see activity
 
 //  PIO data structures
 PIO s_pio;                                          //  The A2C PIO program
-uint s_sm;                                          //  PIO state machine
-volatile uint32_t s_screen_buffer[192][18];         //  Our buffer of the A2C screen, we don't use the A2 memory
-volatile bool s_screen_GR_buffer[192];              //  See table below
-volatile bool s_screen_TEXT_buffer[192];            //  See table below
+uint s_a2c_sm;                                      //  PIO state machine
+static uint32_t s_a2c_data = 0;
+
+#define A2C_DATA_RX 0x00000001
+
+uint32_t s_screen_buffer[192][18];         //  Our buffer of the A2C screen, we don't use the A2 memory
+bool s_screen_GR_buffer[192];              //  See table below
+bool s_screen_TEXT_buffer[192];            //  See table below
                                                     //  TEXT and GR Pins
                                                     //  Mode:   TEXT    GR      HGR     DGR     DHGR
                                                     //  TEXT:   HIGH    LOW     LOW     HIGH    HIGH
                                                     //  GR:     LOW     HIGH    HIGH    HIGH    HIGH
 
 bool s_menu_screen_init = false;                    //  We lazy init the menu screen once
-volatile bool s_show_menu_screen = false;           //  Is the menu screen up
+bool s_show_menu_screen = false;           //  Is the menu screen up
 
-volatile bool s_button_state = false;               //  State of the button
-volatile uint64_t s_last_BUTTON = 0;                //  Last state of the button to track transitions
+bool s_button_state = false;               //  State of the button
+uint64_t s_last_BUTTON = 0;                //  Last state of the button to track transitions
 const uint64_t s_long_button_press = (500 * 1000);  //  500,000 microseconds (half second)
 
 //  We repurpose cfg_color_style, default is 2
@@ -821,7 +825,7 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
             }
         }
     }
-    else if (render_mode == RM_NTSC)
+ /*   else if (render_mode == RM_NTSC)
     {
         //  We are rendering using a 11 bit (NUM_CAP 8 to 4) NTSC style color LUT
         uint oddness = 0;       //  oddness is real just phase, but only 0 or 2 due to douple pixels
@@ -865,8 +869,8 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
                     dots = (dots & 0xFFFF0000) | (next_dots >> 16);
             }
         }
-    }
-    else if (render_mode == RM_CLAMP)
+    } */
+    else if ((render_mode == RM_CLAMP) || (render_mode == RM_NTSC))
     {
         //  We are rendering using a 9 bit (NUM_CAP 8 to 3, Clamped) NTSC style color LUT
         uint oddness = 0;
@@ -1059,7 +1063,7 @@ void __time_critical_func(a2c_init)()
     // Load the a2c_input program, and configure a free state machine to run the program.
     s_pio = pio0;
     uint offset = pio_add_program(s_pio, &a2c_input_program);
-    s_sm = pio_claim_unused_sm(s_pio, true);
+    s_a2c_sm = pio_claim_unused_sm(s_pio, true);
     
     //  Setup a repeating timer to keep an eye on WNDW an see if it has stopped
     add_repeating_timer_ms(500, repeating_timer_callback, NULL, &s_repeating_timer);
@@ -1075,7 +1079,61 @@ void __time_critical_func(a2c_init)()
     gpio_set_irq_enabled_with_callback(PIN_WNDW, GPIO_IRQ_EDGE_FALL, true, WNDW_irq_callback);      //  Interrupt on WNDW going low
 
     //  Start the PIO program
-    a2c_input_program_init(s_pio, s_sm, offset, PIO_INPUT_PIN_BASE);
+    a2c_input_program_init(s_pio, s_a2c_sm, offset, PIO_INPUT_PIN_BASE);
+}
+
+// Audio Related
+const int16_t sine[32] = {
+    0x8000,0x98f8,0xb0fb,0xc71c,0xda82,0xea6d,0xf641,0xfd89,
+    0xffff,0xfd89,0xf641,0xea6d,0xda82,0xc71c,0xb0fb,0x98f8,
+    0x8000,0x6707,0x4f04,0x38e3,0x257d,0x1592,0x9be,0x276,
+    0x0,0x276,0x9be,0x1592,0x257d,0x38e3,0x4f04,0x6707
+};
+
+static uint sample_count = 0;
+
+bool audio_timer_callback() 
+{
+    if (dvi0.audio_ring.buffer == NULL)
+        return false;
+
+    int size = get_write_size(&dvi0.audio_ring, false);
+    audio_sample_t *audio_ptr = get_write_pointer(&dvi0.audio_ring);
+    audio_sample_t sample;
+    for (int cnt = 0; cnt < size; cnt++) {
+        uint sample_index = (sample_count >> 2) % 32;
+        sample.channels[0] = sine[sample_index];
+        sample.channels[1] = sine[sample_index];
+        *audio_ptr++ = sample;
+        sample_count++;
+    }
+    increase_write_pointer(&dvi0.audio_ring, size);
+ 
+    return true;
+}
+
+
+uint32_t __time_critical_func(pio_get_multiple)()
+{
+    uint32_t result = 0;
+
+    // if (pio_sm_is_rx_fifo_empty(s_pio, s_a2c_sm) == false)
+    {
+        s_a2c_data = pio_sm_get(s_pio, s_a2c_sm);
+        result |= A2C_DATA_RX;
+    }
+
+    /*
+    if (pio_sm_is_rx_fifo_empty(s_pio, s_lcd_sm) == false)
+    {
+        s_lcd_data = pio_sm_get(s_pio, s_lcd_sm);
+        result |= LCD_DATA_RX;
+    }
+    */
+
+    // audio_timer_callback();
+
+    return result;
 }
 
 void __time_critical_func(a2c_loop)()
@@ -1091,7 +1149,7 @@ void __time_critical_func(a2c_loop)()
         //  We read 18 *32 = 576 bits per line
         for (int x = 0; x < 18; x++)
         {
-            uint32_t rxdata = pio_sm_get_blocking(s_pio, s_sm);
+            uint32_t rxdata = pio_sm_get_blocking(s_pio, s_a2c_sm);
 
             if (x == 0)
             {
@@ -1108,7 +1166,50 @@ void __time_critical_func(a2c_loop)()
             s_screen_buffer[y][x] = ~rxdata;
         }
 
+        audio_timer_callback();
+
         //  We increment this just so the diagnostics show there is activity
         bus_cycle_counter++;
     }
 }
+/*
+void __time_critical_func(a2c_loop)()
+{
+    // initialize the Apple IIc interface
+    a2c_init();
+
+    int x = 0;      //  These are the a2c "screen" indexes
+    int y = 0;
+
+    //  Loop forever reading from the PIO RX queue
+    while (true) 
+    {
+        uint32_t rxflags = pio_get_multiple();
+
+        if ((rxflags & A2C_DATA_RX) != 0)
+        {
+            uint32_t rxdata = s_a2c_data;
+
+            if (x == 0)
+            {
+                //  Delay reading s_scanline until we have the first bytes, this is updated in the WNDW interrupt handler
+                y = s_scanline % 192;
+                s_scanline++;
+                
+                //  record the state of the GR pin to know if this is a color or B&W line
+                s_screen_GR_buffer[y] = gpio_get(PIN_GR);
+                s_screen_TEXT_buffer[y] = gpio_get(PIN_TEXT);
+            }
+            
+            //  SEROUT is inverted from memory bits
+            s_screen_buffer[y][x] = ~rxdata;
+
+            //  We read 18 *32 = 576 bits per line
+            x = (x + 1) % 18;
+        }
+
+        //  We increment this just so the diagnostics show there is activity
+        bus_cycle_counter++;
+    }
+}
+    */
