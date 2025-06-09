@@ -64,6 +64,7 @@ extern void int2hex(uint8_t* pStrBuf, uint32_t value, uint32_t digits);
 
 #ifdef FEATURE_A2C
 extern void render_a2c();
+extern void render_a2c_debug(bool IsVidexMode, bool top);
 #endif
 
 //#define FEATURE_TEST_TMDS

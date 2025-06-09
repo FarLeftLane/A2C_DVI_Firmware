@@ -269,7 +269,13 @@ void DELAYED_COPY_CODE(render_loop)()
         uint32_t current_softsw = soft_switches;
         bool IsVidex = ((current_softsw & (SOFTSW_TEXT_MODE|SOFTSW_VIDEX_80COL)) == (SOFTSW_TEXT_MODE|SOFTSW_VIDEX_80COL));
 #ifndef FEATURE_TEST_TMDS
+
+        //  Render the top (true) two text lines for debug
+#ifdef FEATURE_A2C
+        render_a2c_debug(IsVidex, true);
+#else
         render_debug(IsVidex, true);
+#endif
 
         // set flag when monochrome rendering is requested
         mono_rendering = (current_softsw & SOFTSW_MONOCHROME)||(internal_flags & IFLAGS_FORCED_MONO);
@@ -352,7 +358,12 @@ void DELAYED_COPY_CODE(render_loop)()
             }
         }
 
+        //  Render the bottom (false) two text lines for debug
+#ifdef FEATURE_A2C
+        render_a2c_debug(IsVidex, false);
+#else
         render_debug(IsVidex, false);
+#endif
 
         update_text_flasher();
 

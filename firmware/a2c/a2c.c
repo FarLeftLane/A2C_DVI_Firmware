@@ -36,6 +36,7 @@ SOFTWARE.
 
 #include "config/config.h"
 #include "menu/menu.h"
+#include "debug/debug.h"
 
 #include "hgrdecode_LUT.h"
 
@@ -46,35 +47,42 @@ SOFTWARE.
 #define PIN_WNDW    2           //  A2C Pin 7  - A2E Pin 47 - GPIO 2
 #define PIN_TEXT    3           //  A2C Pin 1  - A2E Pin 46 - GPIO 3
 #define PIN_GR      4           //  A2C Pin 10 - A2E Pin 45 - GPIO 4
-                                //  Ground GPIO 5 and 6 (A2E pins 43, 44)
+#define PIN_SND     5           //  A2C Pin 5  - A2E Pin 44 - GPIO 5
+                                //  Ground GPIO 5 and 6 (A2E pins 44, 43)
 #define PIN_BUTTON  7           //  Button     - A2E Pin 42 - GPIO 7  10k pull down, 2K pull up
 
 #define PIN_ENABLE  11          //  pull down GP11 to enable the 245 that controls D0-D7 (A2E PINs 49 - 42)
 #define PIO_INPUT_PIN_BASE 0    //  SEROUT is 0
 
 //  WNDW IRQ data structures
-volatile uint64_t s_last_WNDW = 0;              //  Last time we saw WNDW go low in microseconds
-volatile uint32_t s_scanline = 0;               //  What scan line are we on (0-191) based on WNDW interrupts
+uint64_t s_last_WNDW = 0;                       //  Last time we saw WNDW go low in microseconds
+uint32_t s_scanline = 0;                        //  What scan line are we on (0-191) based on WNDW interrupts
 struct repeating_timer s_repeating_timer;       //  We use a repeating timer to tell if WNDW has stopped
 bool s_sync_found = false;                      //  We set this true in the WNDW handler and set it false when the timer doesn't see activity
 
 //  PIO data structures
 PIO s_pio;                                          //  The A2C PIO program
-uint s_sm;                                          //  PIO state machine
-volatile uint32_t s_screen_buffer[192][18];         //  Our buffer of the A2C screen, we don't use the A2 memory
-volatile bool s_screen_GR_buffer[192];              //  See table below
-volatile bool s_screen_TEXT_buffer[192];            //  See table below
+uint s_a2c_sm;                                      //  PIO state machine
+
+uint32_t s_screen_buffer[192][18];                  //  Our buffer of the A2C screen, we don't use the A2 memory
+bool s_screen_GR_buffer[192];                       //  See table below
+bool s_screen_TEXT_buffer[192];                     //  See table below
                                                     //  TEXT and GR Pins
                                                     //  Mode:   TEXT    GR      HGR     DGR     DHGR
                                                     //  TEXT:   HIGH    LOW     LOW     HIGH    HIGH
                                                     //  GR:     LOW     HIGH    HIGH    HIGH    HIGH
 
 bool s_menu_screen_init = false;                    //  We lazy init the menu screen once
-volatile bool s_show_menu_screen = false;           //  Is the menu screen up
+bool s_show_menu_screen = false;                    //  Is the menu screen up
 
-volatile bool s_button_state = false;               //  State of the button
-volatile uint64_t s_last_BUTTON = 0;                //  Last state of the button to track transitions
+bool s_button_state = false;                        //  State of the button
+uint64_t s_last_BUTTON = 0;                         //  Last state of the button to track transitions
 const uint64_t s_long_button_press = (500 * 1000);  //  500,000 microseconds (half second)
+
+static uint64_t s_a2c_boot_time = 1;                //  Keep track of the time spent waiting on A2C video data for debugging
+static uint64_t s_total_time = 1;
+static uint64_t s_blocking_time = 1;
+
 
 //  We repurpose cfg_color_style, default is 2
 //  We do this so that the config stored in flash doesn't change between firmware (A2DVI and A2C_DVI)
@@ -332,6 +340,22 @@ static bool DELAYED_COPY_CODE(config_command)(char * command_name, int index, bo
             //  Default
             config_load_defaults();
         }
+        else if (index == 2)
+        {
+            if (IS_IFLAG(IFLAGS_DEBUG_LINES))               //  Toggle debug lines
+            {
+                SET_IFLAG(0, IFLAGS_DEBUG_LINES);
+            }
+            else
+            {
+                SET_IFLAG(1, IFLAGS_DEBUG_LINES);
+            }
+        }
+    }
+    else
+    {
+        if (index == 2)
+            result = IS_IFLAG(IFLAGS_DEBUG_LINES);
     }
 
     return result;
@@ -397,7 +421,7 @@ struct menu_commands DELAYED_COPY_DATA(a2c_menu_items)[] =
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
     { "VIDEO:", { {"720X480", video_command }, {"640X480", video_command }, {"", NULL } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
-    { "SET:", { {"SAVE", config_command }, {"DEFAULT", config_command }, {"", NULL } } },
+    { "SET:", { {"SAVE", config_command }, {"DEFAULT", config_command }, {"DEBUG", config_command } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
     { "EXIT", { {"", exit_command }, {"", NULL }, {"", NULL } } }
 };
@@ -449,7 +473,7 @@ static void DELAYED_COPY_CODE(init_menu_screen)(void)
     leftY( 2, a2c_TitleFirmware, PRINTMODE_NORMAL);
 
     leftY(21, "A2C_DVI (C) 2025", PRINTMODE_NORMAL);
-    leftY(22, "MIKE NEIL, CHRIS AUGER", PRINTMODE_NORMAL);
+    leftY(22, "MIKE NEIL/CHRIS AUGER/JOSHUA CLARK", PRINTMODE_NORMAL);
     leftY(23, a2c_TitleCopyright, PRINTMODE_NORMAL);
 }
 
@@ -697,6 +721,136 @@ void DELAYED_COPY_CODE(process_button)()
     }
 }
 
+
+void DELAYED_COPY_CODE(clear_a2c_debug_monitor)(void)
+{
+    // clear status lines
+    for (uint i = 0; i < sizeof(status_line)/4; i++)
+    {
+        ((uint32_t*)status_line)[i] = 0xA0A0A0A0;
+    }    
+}
+
+bool s_debug_monitor_cleared = false;
+char s_temp_line_buffer[40];
+
+void DELAYED_COPY_CODE(update_a2c_debug_monitor)(void)
+{
+    if (s_debug_monitor_cleared == false)
+    {
+        //  Clear the debug monitor text lines
+        clear_a2c_debug_monitor();
+        s_debug_monitor_cleared = true;
+    }
+
+    uint8_t* line1 = status_line;
+    uint8_t* line2 = &status_line[40];
+    uint8_t* line3 = &status_line[80];
+    uint8_t* line4 = &status_line[120];
+
+    if ((frame_counter & 3) == 0)           // do not update too fast, so data remains readable
+    {
+
+        uint32_t total = s_total_time / 1000;
+        uint32_t blocking = s_blocking_time;     //  times 1000 100.0
+        uint32_t blocking_percentage = 1100;     //  Error value, 110.0%
+        if (total != 0)
+            blocking_percentage = blocking / total;
+
+        copy_str(&line1[0], "Blocking %: ");
+        int2str(blocking_percentage, s_temp_line_buffer, 4);
+        copy_str(&line1[12], s_temp_line_buffer);
+
+        copy_str(&line1[20], "Free: ");
+        int2str(getFreeHeap(), s_temp_line_buffer, 8);
+        copy_str(&line1[20+6], s_temp_line_buffer);  
+
+        copy_str(&line2[0], "Frame: ");
+        int2str(frame_counter, s_temp_line_buffer, 8);
+        copy_str(&line2[0+8], s_temp_line_buffer);
+
+        bool snd = gpio_get(PIN_SND);
+        if (snd)
+            copy_str(&line3[0], "GP5: On ");
+        else
+            copy_str(&line3[0], "GP5: Off");
+    }
+
+    if ((frame_counter & 0x0F) == 0)         // do not update too fast, so data remains readable
+    {
+        //  Display a bit of screen data
+        int2hex(&line4[0], s_screen_buffer[2][0], 8);
+        int2hex(&line4[9], s_screen_buffer[2][1], 8);
+        int2hex(&line4[18], s_screen_buffer[2][2], 8);
+        int2hex(&line4[18+9], s_screen_buffer[2][3], 8);
+    }
+}
+
+void DELAYED_COPY_CODE(render_a2c_debug)(bool IsVidexMode, bool top)
+{
+    uint8_t color_mode = 0;
+
+    if (top)
+    {
+        if (!IS_IFLAG(IFLAGS_DEBUG_LINES))
+        {
+            //  If no debugging, just render black at the top of the screen
+            for (uint row = 0; row < 16; row++)
+            {
+                dvi_get_scanline(tmdsbuf);
+                dvi_scanline_rgb640(tmdsbuf, tmdsbuf_red, tmdsbuf_green, tmdsbuf_blue);
+
+                for (uint32_t x = 0; x < 320; x++)
+                {
+                    *(tmdsbuf_red++)   = TMDS_SYMBOL_0_0;
+                    *(tmdsbuf_green++) = TMDS_SYMBOL_0_0;
+                    *(tmdsbuf_blue++)  = TMDS_SYMBOL_0_0;
+                }
+
+                dvi_send_scanline(tmdsbuf);
+            }
+        }
+        else
+        {
+            update_a2c_debug_monitor();
+
+            // render two debug monitor lines above the screen area
+            uint8_t* line1 = status_line;
+            uint8_t* line2 = &status_line[40];
+            render_text40_line(line1, 0, color_mode);
+            render_text40_line(line2, 0, color_mode);
+        }
+    }
+    else
+    {
+        if (!IS_IFLAG(IFLAGS_DEBUG_LINES))
+        {
+            //  If no debugging, just render black at the top of the screen
+            for (uint row = 0; row < 16; row++)
+            {
+                dvi_get_scanline(tmdsbuf);
+                dvi_scanline_rgb640(tmdsbuf, tmdsbuf_red, tmdsbuf_green, tmdsbuf_blue);
+
+                for (uint32_t x = 0; x < 320; x++)
+                {
+                    *(tmdsbuf_red++)   = TMDS_SYMBOL_0_0;
+                    *(tmdsbuf_green++) = TMDS_SYMBOL_0_0;
+                    *(tmdsbuf_blue++)  = TMDS_SYMBOL_0_0;
+                }
+
+                dvi_send_scanline(tmdsbuf);
+            }
+        }
+        else
+        {
+            // render two debug monitor lines below the screen area
+            uint8_t* line3 = &status_line[80];
+            uint8_t* line4 = &status_line[120];
+            render_text40_line(line3, 0, color_mode);
+            render_text40_line(line4, 0, color_mode);
+        }
+    }
+}
 
 //  These are the render modes that are supported.
 typedef enum {
@@ -1042,6 +1196,9 @@ void __time_critical_func(a2c_init)()
     gpio_init(PIN_WNDW);
     gpio_set_dir(PIN_WNDW, GPIO_IN);
 
+    //  Setup PIN_SND as input for debugging
+    gpio_init(PIN_SND);
+    gpio_set_dir(PIN_SND, GPIO_IN);
 
     //  Pull the enable pin low so we can data throught the 245
     gpio_init(PIN_ENABLE);
@@ -1059,7 +1216,7 @@ void __time_critical_func(a2c_init)()
     // Load the a2c_input program, and configure a free state machine to run the program.
     s_pio = pio0;
     uint offset = pio_add_program(s_pio, &a2c_input_program);
-    s_sm = pio_claim_unused_sm(s_pio, true);
+    s_a2c_sm = pio_claim_unused_sm(s_pio, true);
     
     //  Setup a repeating timer to keep an eye on WNDW an see if it has stopped
     add_repeating_timer_ms(500, repeating_timer_callback, NULL, &s_repeating_timer);
@@ -1075,13 +1232,14 @@ void __time_critical_func(a2c_init)()
     gpio_set_irq_enabled_with_callback(PIN_WNDW, GPIO_IRQ_EDGE_FALL, true, WNDW_irq_callback);      //  Interrupt on WNDW going low
 
     //  Start the PIO program
-    a2c_input_program_init(s_pio, s_sm, offset, PIO_INPUT_PIN_BASE);
+    a2c_input_program_init(s_pio, s_a2c_sm, offset, PIO_INPUT_PIN_BASE);
 }
 
 void __time_critical_func(a2c_loop)()
 {
     // initialize the Apple IIc interface
     a2c_init();
+    s_a2c_boot_time = to_us_since_boot (get_absolute_time());
 
     //  Loop forever reading from the PIO RX queue
     while (true) 
@@ -1091,7 +1249,13 @@ void __time_critical_func(a2c_loop)()
         //  We read 18 *32 = 576 bits per line
         for (int x = 0; x < 18; x++)
         {
-            uint32_t rxdata = pio_sm_get_blocking(s_pio, s_sm);
+            uint64_t start_time = to_us_since_boot (get_absolute_time());
+
+            uint32_t rxdata = pio_sm_get_blocking(s_pio, s_a2c_sm);
+
+            uint64_t end_time = to_us_since_boot (get_absolute_time());
+            s_total_time = end_time - s_a2c_boot_time;
+            s_blocking_time = s_blocking_time + (end_time - start_time);
 
             if (x == 0)
             {
