@@ -28,6 +28,7 @@ SOFTWARE.
 #include <hardware/pio.h>
 #include <hardware/dma.h>
 #include <hardware/timer.h>
+#include <hardware/watchdog.h>
 #include <pico/multicore.h>
 #include "applebus/buffers.h"
 #include "render/render.h"
@@ -37,6 +38,8 @@ SOFTWARE.
 #include "config/config.h"
 #include "menu/menu.h"
 #include "debug/debug.h"
+
+// #define NO_NTSC_LUT     1    //  If we need extra memory for testing
 
 #include "hgrdecode_LUT.h"
 
@@ -62,7 +65,10 @@ bool s_sync_found = false;                      //  We set this true in the WNDW
 
 //  PIO data structures
 PIO s_pio;                                          //  The A2C PIO program
-uint s_a2c_sm;                                      //  PIO state machine
+uint s_a2c_sm;                                      //  PIO state machine for SEROUT
+uint s_a2c_snd_sm;                                  //  PIO state machine for SND
+
+#define A2C_DATA_RX 0x00000001
 
 uint32_t s_screen_buffer[192][18];                  //  Our buffer of the A2C screen, we don't use the A2 memory
 bool s_screen_GR_buffer[192];                       //  See table below
@@ -80,8 +86,10 @@ uint64_t s_last_BUTTON = 0;                         //  Last state of the button
 const uint64_t s_long_button_press = (500 * 1000);  //  500,000 microseconds (half second)
 
 static uint64_t s_a2c_boot_time = 1;                //  Keep track of the time spent waiting on A2C video data for debugging
-static uint64_t s_total_time = 1;
-static uint64_t s_blocking_time = 1;
+static uint64_t s_total_PIO_time = 1;
+static uint64_t s_blocking_PIO_time = 1;
+static uint64_t s_total_render_time = 1;
+static uint64_t s_render_time = 1;
 
 
 //  We repurpose cfg_color_style, default is 2
@@ -157,6 +165,22 @@ bool __time_critical_func(repeating_timer_callback)(__unused struct repeating_ti
     }
 
     return true;
+}
+
+//  Reboot the machine
+bool s_needs_reboot = false;
+bool s_save_required = false;
+
+void software_reset()
+{
+    //  Wait for the button to come up
+    while (gpio_get(PIN_BUTTON) == true)
+    {
+        //  Spin
+    }
+
+    watchdog_enable(1, 1);
+    while(1);
 }
 
 //  Utility routine to left justify text in the 40 Col menu screen
@@ -299,11 +323,21 @@ static bool DELAYED_COPY_CODE(video_command)(char * command_name, int index, boo
     {
         if (index == 0)
         {
-            cfg_video_mode = Dvi720x480;
+            if (cfg_video_mode != Dvi720x480)
+            {
+                cfg_video_mode = Dvi720x480;
+                s_needs_reboot = true;
+                s_save_required = true;
+            }
         }
         else if (index == 1)
         {
-            cfg_video_mode = Dvi640x480;
+            if (cfg_video_mode != Dvi640x480)
+            {
+                cfg_video_mode = Dvi640x480;
+                s_needs_reboot = true;
+                s_save_required = true;
+            }
         }
     }
     else
@@ -332,13 +366,24 @@ static bool DELAYED_COPY_CODE(config_command)(char * command_name, int index, bo
             //  Save
             config_save();
 
+            if (s_needs_reboot)
+                software_reset();
+
             //  Leave the screen
             s_show_menu_screen = false;
         }
         else if (index == 1)
         {
             //  Default
+            DviVideoMode_t old_video_mode = cfg_video_mode;
+
             config_load_defaults();
+
+            if (old_video_mode != cfg_video_mode)
+            {
+                s_needs_reboot = true;
+                s_save_required = true;
+            }
         }
         else if (index == 2)
         {
@@ -372,6 +417,12 @@ static bool DELAYED_COPY_CODE(exit_command)(char * command_name, int index, bool
         if (index == 0)
         {
             //  Exit
+            if (s_save_required)
+                config_save();
+
+            if (s_needs_reboot)
+                software_reset();
+
             //  Leave the screen
             s_show_menu_screen = false;
         }
@@ -751,19 +802,29 @@ void DELAYED_COPY_CODE(update_a2c_debug_monitor)(void)
     if ((frame_counter & 3) == 0)           // do not update too fast, so data remains readable
     {
 
-        uint32_t total = s_total_time / 1000;
-        uint32_t blocking = s_blocking_time;     //  times 1000 100.0
-        uint32_t blocking_percentage = 1100;     //  Error value, 110.0%
+        uint32_t total = s_total_PIO_time / 1000;
+        uint32_t blocking = s_blocking_PIO_time;        //  times 1000 100.0
+        uint32_t blocking_percentage = 1100;            //  Error value, 110.0%
         if (total != 0)
             blocking_percentage = blocking / total;
 
-        copy_str(&line1[0], "Blocking %: ");
+        copy_str(&line1[0], "PIO %: ");
         int2str(blocking_percentage, s_temp_line_buffer, 4);
-        copy_str(&line1[12], s_temp_line_buffer);
+        copy_str(&line1[7], s_temp_line_buffer);
 
-        copy_str(&line1[20], "Free: ");
-        int2str(getFreeHeap(), s_temp_line_buffer, 8);
-        copy_str(&line1[20+6], s_temp_line_buffer);  
+        total = s_total_render_time / 1000;
+        blocking = s_render_time;                       //  times 1000 100.0
+        blocking_percentage = 1100;                     //  Error value, 110.0%
+        if (total != 0)
+            blocking_percentage = blocking / total;
+
+        copy_str(&line1[7+4+1], "RND %: ");
+        int2str(blocking_percentage, s_temp_line_buffer, 4);
+        copy_str(&line1[7+4+1+7], s_temp_line_buffer);
+
+        copy_str(&line1[7+4+1+7+4+1], "Free: ");
+        int2str(getFreeHeap(), s_temp_line_buffer, 6);
+        copy_str(&line1[7+4+1+7+4+1+6], s_temp_line_buffer);  
 
         copy_str(&line2[0], "Frame: ");
         int2str(frame_counter, s_temp_line_buffer, 8);
@@ -860,12 +921,14 @@ typedef enum {
     RM_CLAMP       = 3
 } a2c_render_mode_mode_t;
 
-static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t render_mode, uint line, volatile uint32_t screen_buffer[192][18])
+static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t render_mode, uint line)        //  volatile uint32_t screen_buffer[192][18]
 {
-    dvi_get_scanline(tmdsbuf);
+    dvi_get_scanline(tmdsbuf);                                              //  We only spend about 0.2% of the tim,e blocking
     dvi_scanline_rgb(tmdsbuf, tmdsbuf_red, tmdsbuf_green, tmdsbuf_blue);
 
-    uint32_t left_margin = ((dvi_x_resolution - (32 * 18)) / 8) * 2;     //  We want this to always be even.  18 32-bit samples of SEROUT
+    uint64_t start_time = to_us_since_boot (get_absolute_time());
+
+    uint32_t left_margin = ((dvi_x_resolution - (32 * 18)) / 8) * 2;        //  We want this to always be even.  18 32-bit samples of SEROUT
     uint32_t right_margin = ((32 * 18) / 2) + left_margin;
 
     //  Fill in the left and right margins, this needs to be done first for timing reasons
@@ -887,8 +950,8 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
         for(uint i = 0; i < 18; i++)
         {
             // Load in the first 32 dots
-            uint32_t dots = screen_buffer[line][i];
-            uint32_t next_dots = (i < 18) ? screen_buffer[line][i+1] : 0;
+            uint32_t dots = s_screen_buffer[line][i];
+            uint32_t next_dots = (i < 17) ? s_screen_buffer[line][i+1] : 0;
             
             // Consume 32 dots, two at a time
             for(uint j = 0; j < 16; j++)
@@ -949,8 +1012,8 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
         for(uint i = 0; i < 18; i++)
         {
             // Load in the first 32 dots
-            uint32_t dots = screen_buffer[line][i];
-            uint32_t next_dots = (i < 18) ? screen_buffer[line][i+1] : 0;
+            uint32_t dots = s_screen_buffer[line][i];
+            uint32_t next_dots = (i < 17) ? s_screen_buffer[line][i+1] : 0;
 
             // Consume 32 dots, two at a time
             for(uint j = 0; j < 16; j++)
@@ -975,6 +1038,7 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
             }
         }
     }
+#ifndef NO_NTSC_LUT
     else if (render_mode == RM_NTSC)
     {
         //  We are rendering using a 11 bit (NUM_CAP 8 to 4) NTSC style color LUT
@@ -994,8 +1058,8 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
         for(uint i = 0; i < 18; i++)
         {
             // Load in the first 32 dots
-            uint32_t dots = screen_buffer[line][i];
-            uint32_t next_dots = (i < 18) ? screen_buffer[line][i+1] : 0;
+            uint32_t dots = s_screen_buffer[line][i];
+            uint32_t next_dots = (i < 17) ? s_screen_buffer[line][i+1] : 0;
             
             // Consume 32 dots, two at a time
             for(uint j = 0; j < 16; j++)
@@ -1020,7 +1084,8 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
             }
         }
     }
-    else if (render_mode == RM_CLAMP)
+#endif      //  NO_NTSC_LUT
+    else if ((render_mode == RM_CLAMP) || (render_mode == RM_NTSC))
     {
         //  We are rendering using a 9 bit (NUM_CAP 8 to 3, Clamped) NTSC style color LUT
         uint oddness = 0;
@@ -1042,8 +1107,8 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
         for(uint i = 0; i < 18; i++)
         {
             // Load in the first 32 dots
-            uint32_t dots = screen_buffer[line][i];
-            uint32_t next_dots = (i < 18) ? screen_buffer[line][i+1] : 0;
+            uint32_t dots = s_screen_buffer[line][i];
+            uint32_t next_dots = (i < 17) ? s_screen_buffer[line][i+1] : 0;
 
             // Consume 32 dots, two at a time
             for(uint j = 0; j < 16; j++)
@@ -1069,7 +1134,11 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
         }
     }
 
-    dvi_send_scanline(tmdsbuf);
+    uint64_t end_time = to_us_since_boot (get_absolute_time());
+    s_total_render_time = end_time - s_a2c_boot_time;
+    s_render_time = s_render_time + (end_time - start_time);
+
+    dvi_send_scanline(tmdsbuf);             //  We spend about 0.4% waiting on the queu
 }
 
 
@@ -1121,7 +1190,7 @@ void DELAYED_COPY_CODE(render_a2c)()
             for(uint line = 0; line < 192; line++)
             {
                 //  Force mono mode
-                render_a2c_full_line(RM_BW, line, s_screen_buffer);
+                render_a2c_full_line(RM_BW, line);
             }
         }
         else
@@ -1143,7 +1212,7 @@ void DELAYED_COPY_CODE(render_a2c)()
                         render_mode = RM_BW;
                 }
 
-                render_a2c_full_line(render_mode, line, s_screen_buffer);
+                render_a2c_full_line(render_mode, line);
             }
         }
     }
@@ -1254,8 +1323,8 @@ void __time_critical_func(a2c_loop)()
             uint32_t rxdata = pio_sm_get_blocking(s_pio, s_a2c_sm);
 
             uint64_t end_time = to_us_since_boot (get_absolute_time());
-            s_total_time = end_time - s_a2c_boot_time;
-            s_blocking_time = s_blocking_time + (end_time - start_time);
+            s_total_PIO_time = end_time - s_a2c_boot_time;
+            s_blocking_PIO_time = s_blocking_PIO_time + (end_time - start_time);
 
             if (x == 0)
             {

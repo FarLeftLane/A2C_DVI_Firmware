@@ -297,6 +297,27 @@ void DELAYED_COPY_CODE(render_loop)()
             render_videx_text();
         else
         {
+#ifdef FEATURE_A2C
+            switch(current_softsw & SOFTSW_MODE_MASK)
+            {
+                case SOFTSW_HIRES_MODE: //4
+                        render_a2c();
+                    break;
+
+                default:
+                    render_text();
+                    if (reload_charsets)
+                    {
+                        config_load_charsets();
+                    }
+                    else
+                    if (reload_colors)
+                    {
+                        tmds_color_load();
+                    }
+                    break;
+            }
+#else
             switch(current_softsw & SOFTSW_MODE_MASK)
             {
                 case 0:
@@ -326,11 +347,7 @@ void DELAYED_COPY_CODE(render_loop)()
                     }
                     else
                     {
-#ifdef FEATURE_A2C
-                        render_a2c();
-#else
                         render_hires();
-#endif
                     }
                     break;
                 case SOFTSW_HIRES_MODE|SOFTSW_MIX_MODE: //6
@@ -356,6 +373,7 @@ void DELAYED_COPY_CODE(render_loop)()
                     }
                     break;
             }
+#endif
         }
 
         //  Render the bottom (false) two text lines for debug
