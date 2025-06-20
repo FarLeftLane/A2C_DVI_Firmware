@@ -28,6 +28,7 @@ SOFTWARE.
 #include <hardware/pio.h>
 #include <hardware/dma.h>
 #include <hardware/timer.h>
+#include <hardware/watchdog.h>
 #include <pico/multicore.h>
 #include "applebus/buffers.h"
 #include "render/render.h"
@@ -39,7 +40,7 @@ SOFTWARE.
 #include "menu/menu.h"
 #include "debug/debug.h"
 
-#define NO_NTSC_LUT     1
+// #define NO_NTSC_LUT     1    //  If we need extra memory for testing
 
 #include "hgrdecode_LUT.h"
 
@@ -171,6 +172,22 @@ bool __time_critical_func(repeating_timer_callback)(__unused struct repeating_ti
     }
 
     return true;
+}
+
+//  Reboot the machine
+bool s_needs_reboot = false;
+bool s_save_required = false;
+
+void software_reset()
+{
+    //  Wait for the button to come up
+    while (gpio_get(PIN_BUTTON) == true)
+    {
+        //  Spin
+    }
+
+    watchdog_enable(1, 1);
+    while(1);
 }
 
 //  Utility routine to left justify text in the 40 Col menu screen
@@ -313,11 +330,21 @@ static bool DELAYED_COPY_CODE(video_command)(char * command_name, int index, boo
     {
         if (index == 0)
         {
-            cfg_video_mode = Dvi720x480;
+            if (cfg_video_mode != Dvi720x480)
+            {
+                cfg_video_mode = Dvi720x480;
+                s_needs_reboot = true;
+                s_save_required = true;
+            }
         }
         else if (index == 1)
         {
-            cfg_video_mode = Dvi640x480;
+            if (cfg_video_mode != Dvi640x480)
+            {
+                cfg_video_mode = Dvi640x480;
+                s_needs_reboot = true;
+                s_save_required = true;
+            }
         }
     }
     else
@@ -346,13 +373,24 @@ static bool DELAYED_COPY_CODE(config_command)(char * command_name, int index, bo
             //  Save
             config_save();
 
+            if (s_needs_reboot)
+                software_reset();
+
             //  Leave the screen
             s_show_menu_screen = false;
         }
         else if (index == 1)
         {
             //  Default
+            DviVideoMode_t old_video_mode = cfg_video_mode;
+
             config_load_defaults();
+
+            if (old_video_mode != cfg_video_mode)
+            {
+                s_needs_reboot = true;
+                s_save_required = true;
+            }
         }
         else if (index == 2)
         {
@@ -386,6 +424,12 @@ static bool DELAYED_COPY_CODE(exit_command)(char * command_name, int index, bool
         if (index == 0)
         {
             //  Exit
+            if (s_save_required)
+                config_save();
+
+            if (s_needs_reboot)
+                software_reset();
+
             //  Leave the screen
             s_show_menu_screen = false;
         }
@@ -896,6 +940,8 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
     dvi_get_scanline(tmdsbuf);                                              //  We only spend about 0.2% of the tim,e blocking
     dvi_scanline_rgb(tmdsbuf, tmdsbuf_red, tmdsbuf_green, tmdsbuf_blue);
 
+    uint64_t start_time = to_us_since_boot (get_absolute_time());
+
     uint32_t left_margin = ((dvi_x_resolution - (32 * 18)) / 8) * 2;        //  We want this to always be even.  18 32-bit samples of SEROUT
     uint32_t right_margin = ((32 * 18) / 2) + left_margin;
 
@@ -1101,6 +1147,10 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
             }
         }
     }
+
+    uint64_t end_time = to_us_since_boot (get_absolute_time());
+    s_total_render_time = end_time - s_a2c_boot_time;
+    s_render_time = s_render_time + (end_time - start_time);
 
     dvi_send_scanline(tmdsbuf);             //  We spend about 0.4% waiting on the queu
 }
