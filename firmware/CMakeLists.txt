@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.13)
 
 # firmware version
-set(FW_VERSION "1.7.5")
+set(FW_VERSION "1.7.6")
 message(STATUS "Building firmware version ${FW_VERSION}")
 
 option(FEATURE_PICO2 "Build project for PICO2 (RP2350) instead of original PICO (RP2040)" OFF)
@@ -188,6 +188,7 @@ pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/applebus/abu
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/libdvi/dvi_serialiser.pio)
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/libdvi/tmds_encode_1bpp.pio)
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/a2c/a2c_SEROUT.pio)
+pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/a2c/a2c_SND.pio)
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(${BINARY_NAME} 0)
