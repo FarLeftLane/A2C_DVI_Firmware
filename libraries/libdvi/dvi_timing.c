@@ -342,6 +342,7 @@ void __dvi_func(dvi_setup_scanline_for_vblank)(const struct dvi_timing *t, const
 	}
 }
 
+#ifdef FEATURE_A2_AUDIO
 void __dvi_func(dvi_setup_scanline_for_vblank_with_audio)(const struct dvi_timing *t, const struct dvi_lane_dma_cfg dma_cfg[],
 		bool vsync_asserted, struct dvi_scanline_dma_list *l) {
 
@@ -373,6 +374,7 @@ void __dvi_func(dvi_setup_scanline_for_vblank_with_audio)(const struct dvi_timin
 		}
 	}
 }
+#endif
 
 void __dvi_func(dvi_setup_scanline_for_active)(const struct dvi_timing *t, const struct dvi_lane_dma_cfg dma_cfg[],
 		uint32_t *tmdsbuf, struct dvi_scanline_dma_list *l, bool black)
@@ -410,6 +412,7 @@ void __dvi_func(dvi_setup_scanline_for_active)(const struct dvi_timing *t, const
 	}
 }
 
+#ifdef FEATURE_A2_AUDIO
 void __dvi_func(dvi_setup_scanline_for_active_with_audio)(const struct dvi_timing *t, const struct dvi_lane_dma_cfg dma_cfg[],
 		uint32_t *tmdsbuf, struct dvi_scanline_dma_list *l, bool black) {
 
@@ -460,6 +463,7 @@ void __dvi_func(dvi_setup_scanline_for_active_with_audio)(const struct dvi_timin
 		}
 	}
 }
+#endif
 
 void __dvi_func(dvi_update_scanline_data_dma)(const struct dvi_timing *t, const uint32_t *tmdsbuf, struct dvi_scanline_dma_list *l, bool audio)
 {

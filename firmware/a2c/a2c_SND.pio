@@ -47,7 +47,7 @@ static inline void a2c_snd_input_program_init(PIO pio, uint sm, uint offset, uin
     // Shifting to right matches the format that the hires decode tables need
     sm_config_set_in_shift(
         &c,
-        false, // shift_right = true to shift ISR to right, false to shift ISR to left
+        true,  // shift_right = true to shift ISR to right, false to shift ISR to left
         true,  // Autopush enabled
         32     // Autopush threshold = 32
     );

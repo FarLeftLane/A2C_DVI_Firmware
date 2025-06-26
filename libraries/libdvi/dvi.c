@@ -29,10 +29,12 @@ void __dvi_func(dvi_init)(struct dvi_inst *inst, uint spinlock_tmds_queue, uint 
 {
 	inst->dvi_started = false;
     inst->timing_state.v_ctr  = 0;
+	inst->data_island_is_enabled = false;
+#ifdef FEATURE_A2_AUDIO
     inst->dvi_frame_count = 0;
-    
     dvi_audio_init(inst);
-    
+#endif
+
 	dvi_timing_state_init(&inst->timing_state);
 	dvi_serialiser_init(inst->ser_cfg);
 	for (int i = 0; i < N_TMDS_LANES; ++i) {
@@ -57,7 +59,9 @@ void __dvi_func(dvi_init)(struct dvi_inst *inst, uint spinlock_tmds_queue, uint 
 	dvi_setup_scanline_for_vblank(inst->timing, inst->dma_cfg, false, &inst->dma_list_vblank_nosync);
 	dvi_setup_scanline_for_active(inst->timing, inst->dma_cfg, (void*)SRAM_BASE, &inst->dma_list_active, false);
 	dvi_setup_scanline_for_active(inst->timing, inst->dma_cfg, NULL, &inst->dma_list_error, false);
+#ifdef FEATURE_A2_AUDIO
     dvi_setup_scanline_for_active(inst->timing, inst->dma_cfg, NULL, &inst->dma_list_active_blank, true);
+#endif
 
 	for (int i = 0; i < DVI_N_TMDS_BUFFERS; ++i)
 	{
@@ -79,7 +83,9 @@ void __dvi_func(dvi_init)(struct dvi_inst *inst, uint spinlock_tmds_queue, uint 
 		queue_add_blocking_u32(&inst->q_tmds_free, &tmdsbuf);
 	}
 
+#ifdef FEATURE_A2_AUDIO
     set_AVI_info_frame(&inst->avi_info_frame, UNDERSCAN, RGB, ITU601, PIC_ASPECT_RATIO_4_3, SAME_AS_PAR, FULL, _640x480P60);	
+#endif
 }
 
 // The IRQs will run on whichever core calls this function (this is why it's
@@ -324,9 +330,11 @@ static void __dvi_func(dvi_dma_irq_handler)(struct dvi_inst *inst)
 			break;
 		case DVI_STATE_SYNC:
 			_dvi_load_dma_op(inst->dma_cfg, &inst->dma_list_vblank_sync);
+#ifdef FEATURE_A2_AUDIO
             if (inst->timing_state.v_ctr == 0) {
                 ++inst->dvi_frame_count;
             }
+#endif
 			break;
 		//case DVI_STATE_FRONT_PORCH:
 		//case DVI_STATE_BACK_PORCH:
@@ -334,9 +342,11 @@ static void __dvi_func(dvi_dma_irq_handler)(struct dvi_inst *inst)
 			_dvi_load_dma_op(inst->dma_cfg, &inst->dma_list_vblank_nosync);
 			break;
 	}
+#ifdef FEATURE_A2_AUDIO
     if (inst->data_island_is_enabled) {
         dvi_update_data_packet(inst);
     }
+#endif
 }
 
 static void __dvi_func(dvi_dma0_irq)() {
@@ -428,8 +438,9 @@ void __dvi_func(dvi_destroy)(struct dvi_inst *inst, uint irq_num)
 #endif
 }
 
+#ifdef FEATURE_A2_AUDIO
 // DVI Data island related
-void dvi_audio_init(struct dvi_inst *inst) {
+void __dvi_func(dvi_audio_init)(struct dvi_inst *inst) {
     inst->data_island_is_enabled = false;
     inst->audio_freq = 0;
     inst->samples_per_frame = 0;
@@ -441,9 +452,7 @@ void dvi_audio_init(struct dvi_inst *inst) {
 	inst->audio_ring.size = 0;
 }
 
-void dvi_enable_data_island(struct dvi_inst *inst) {
-    inst->data_island_is_enabled  = true;
-
+void __dvi_func(dvi_enable_data_island)(struct dvi_inst *inst) {
     dvi_setup_scanline_for_vblank_with_audio(inst->timing, inst->dma_cfg, true, &inst->dma_list_vblank_sync);
     dvi_setup_scanline_for_vblank_with_audio(inst->timing, inst->dma_cfg, false, &inst->dma_list_vblank_nosync);
     dvi_setup_scanline_for_active_with_audio(inst->timing, inst->dma_cfg, (void*)SRAM_BASE, &inst->dma_list_active, false);
@@ -456,9 +465,11 @@ void dvi_enable_data_island(struct dvi_inst *inst) {
     dvi_update_data_island_ptr(&inst->dma_list_active,        &inst->next_data_stream);
     dvi_update_data_island_ptr(&inst->dma_list_error,         &inst->next_data_stream);
     dvi_update_data_island_ptr(&inst->dma_list_active_blank,  &inst->next_data_stream);
+
+    inst->data_island_is_enabled  = true;
 }
 
-void dvi_update_data_island_ptr(struct dvi_scanline_dma_list *dma_list, data_island_stream_t *stream) {
+void __dvi_func(dvi_update_data_island_ptr)(struct dvi_scanline_dma_list *dma_list, data_island_stream_t *stream) {
     for (int i = 0; i < N_TMDS_LANES; ++i) {
         dma_cb_t *cblist = dvi_lane_from_list(dma_list, i);
         uint32_t *src = stream->data[i];
@@ -471,7 +482,7 @@ void dvi_update_data_island_ptr(struct dvi_scanline_dma_list *dma_list, data_isl
     }
 }
 
-void dvi_audio_sample_buffer_set(struct dvi_inst *inst, audio_sample_t *buffer, int size) {
+void __dvi_func(dvi_audio_sample_buffer_set)(struct dvi_inst *inst, audio_sample_t *buffer, int size) {
     audio_ring_set(&inst->audio_ring, buffer, size);
 }
 
@@ -482,7 +493,7 @@ void dvi_audio_sample_buffer_set(struct dvi_inst *inst, audio_sample_t *buffer, 
 // 128 * audio_freq = video_freq * N / CTS
 // e.g.: video_freq = 23495525, audio_freq = 44100 , CTS = 28000, N = 6272 
 // CTS = (video_freq * N) / (audio_freq * 128)
-void dvi_set_audio_freq(struct dvi_inst *inst, int audio_freq, int cts, int n) {
+void __dvi_func(dvi_set_audio_freq)(struct dvi_inst *inst, int audio_freq, int cts, int n) {
     inst->audio_freq = audio_freq;
     set_audio_clock_regeneration(&inst->audio_clock_regeneration, cts, n);
     set_audio_info_frame(&inst->audio_info_frame, audio_freq);
@@ -500,7 +511,7 @@ void dvi_wait_for_valid_line(struct dvi_inst *inst) {
 }
 #endif
 
-bool dvi_update_data_packet_(struct dvi_inst *inst, data_packet_t *packet) {
+bool __dvi_func(dvi_update_data_packet_data)(struct dvi_inst *inst, data_packet_t *packet) {
     if ((inst->samples_per_frame == 0) || (inst->audio_ring.buffer == NULL)) {
         return false;
     }
@@ -540,9 +551,9 @@ bool dvi_update_data_packet_(struct dvi_inst *inst, data_packet_t *packet) {
 }
 
 #if 1
-void dvi_update_data_packet(struct dvi_inst *inst) {
+void __dvi_func(dvi_update_data_packet)(struct dvi_inst *inst) {
     data_packet_t packet;
-    if (!dvi_update_data_packet_(inst, &packet)) {
+    if (!dvi_update_data_packet_data(inst, &packet)) {
         set_null_data_packet(&packet);
     }
     bool vsync = inst->timing_state.v_state == DVI_STATE_SYNC;
@@ -551,10 +562,12 @@ void dvi_update_data_packet(struct dvi_inst *inst) {
 
 #else		//	just null packets
 
-void dvi_update_data_packet(struct dvi_inst *inst) {
+void __dvi_func(dvi_update_data_packet)(struct dvi_inst *inst) {
     data_packet_t packet;
     set_null_data_packet(&packet);
     bool vsync = inst->timing_state.v_state == DVI_STATE_SYNC;
     encode_data_packet(&inst->next_data_stream, &packet, inst->timing->v_sync_polarity == vsync, inst->timing->h_sync_polarity);
 }
 #endif
+
+#endif		//	FEATURE_A2_AUDIO

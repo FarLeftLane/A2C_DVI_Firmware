@@ -30,6 +30,7 @@ enum dvi_line_state {
 	DVI_STATE_COUNT
 };
 
+#ifdef FEATURE_A2_AUDIO
 enum dvi_sync_lane_state
 {
 	DVI_SYNC_LANE_STATE_FRONT_PORCH,
@@ -60,6 +61,8 @@ typedef struct dvi_blank {
     int bottom;
 } dvi_blank_t;
 
+#endif
+
 struct dvi_timing_state {
 	uint v_ctr;
 	enum dvi_line_state v_state;
@@ -81,13 +84,21 @@ static_assert(__builtin_offsetof(dma_cb_t, c.ctrl) == __builtin_offsetof(dma_cha
 #define DVI_SYNC_LANE_CHUNKS DVI_STATE_COUNT
 #define DVI_NOSYNC_LANE_CHUNKS 2
 
+#ifdef FEATURE_A2_AUDIO
 #define DVI_SYNC_LANE_CHUNKS_WITH_AUDIO DVI_SYNC_LANE_STATE_COUNT
 #define DVI_NOSYNC_LANE_CHUNKS_WITH_AUDIO DVI_NOSYNC_LANE_STATE_COUNT
+#endif
 
 struct dvi_scanline_dma_list {
+#ifdef FEATURE_A2_AUDIO
 	dma_cb_t l0[DVI_SYNC_LANE_CHUNKS_WITH_AUDIO];
 	dma_cb_t l1[DVI_NOSYNC_LANE_CHUNKS_WITH_AUDIO];
 	dma_cb_t l2[DVI_NOSYNC_LANE_CHUNKS_WITH_AUDIO];
+#else
+	dma_cb_t l0[DVI_SYNC_LANE_CHUNKS];
+	dma_cb_t l1[DVI_NOSYNC_LANE_CHUNKS];
+	dma_cb_t l2[DVI_NOSYNC_LANE_CHUNKS];
+#endif
 };
 
 static inline dma_cb_t* dvi_lane_from_list(struct dvi_scanline_dma_list *l, int i) {
@@ -128,11 +139,13 @@ void dvi_setup_scanline_for_vblank(const struct dvi_timing *t, const struct dvi_
 void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_lane_dma_cfg dma_cfg[],
 		uint32_t *tmdsbuf, struct dvi_scanline_dma_list *l, bool black);
 
+#ifdef FEATURE_A2_AUDIO
 void dvi_setup_scanline_for_vblank_with_audio(const struct dvi_timing *t, const struct dvi_lane_dma_cfg dma_cfg[],
 											  bool vsync_asserted, struct dvi_scanline_dma_list *l);
 
 void dvi_setup_scanline_for_active_with_audio(const struct dvi_timing *t, const struct dvi_lane_dma_cfg dma_cfg[],
 											  uint32_t *tmdsbuf, struct dvi_scanline_dma_list *l, bool black);
+#endif
 
 void dvi_update_scanline_data_dma(const struct dvi_timing *t, const uint32_t *tmdsbuf, struct dvi_scanline_dma_list *l, bool audio);
 

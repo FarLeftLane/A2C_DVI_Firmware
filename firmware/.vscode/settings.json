@@ -54,6 +54,10 @@
         "render.h": "c",
         "hgrdecode_lut.h": "c",
         "variant": "c",
-        "functional": "c"
+        "functional": "c",
+        "cstdint": "c",
+        "audio_ring.h": "c",
+        "compare": "c",
+        "format": "c"
     }
 }

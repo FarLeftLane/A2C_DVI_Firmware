@@ -9,6 +9,7 @@ message(STATUS "Building firmware version ${FW_VERSION}")
 option(FEATURE_PICO2 "Build project for PICO2 (RP2350) instead of original PICO (RP2040)" OFF)
 option(FEATURE_TEST  "Build test firmware instead of normal firmware" OFF)
 option(FEATURE_A2C  "Build A2C firmware instead of normal firmware" ON)
+option(FEATURE_A2_AUDIO  "Experimental Audio support for A2C" ON)
 
 set(PICO_STDIO_UART OFF)
 set(PICO_STDIO_USB  OFF)
@@ -40,6 +41,11 @@ endif()
 if (FEATURE_A2C)
     message(STATUS "Building A2C version")
     add_compile_options(-DFEATURE_A2C)
+endif()
+
+if (FEATURE_A2_AUDIO)
+    message(STATUS "Building A2 audio version")
+    add_compile_options(-DFEATURE_A2_AUDIO)
 endif()
 
 if (FEATURE_TEST)
@@ -95,7 +101,7 @@ pico_sdk_init()
 # include(./libraries/libdvi/CMakeLists.txt)
 
 # Add executable. Default name is the project name, version 0.1
-
+if (FEATURE_A2_AUDIO)
 add_executable(${BINARY_NAME} 
     main.c
     applebus/abus.c
@@ -173,11 +179,92 @@ add_executable(${BINARY_NAME}
     ../libraries/libdvi/tmds_table.h
     ../libraries/libdvi/tmds_table_fullres.h
     ../libraries/libdvi/util_queue_u32_inline.h
+
     ../libraries/libdvi/audio_ring.c
     ../libraries/libdvi/audio_ring.h
     ../libraries/libdvi/data_packet.c
     ../libraries/libdvi/data_packet.h
+    )
+else()
+add_executable(${BINARY_NAME} 
+    main.c
+    applebus/abus.c
+    applebus/abus_setup.c
+    applebus/buffers.c
+
+    a2c/a2c.c
+
+    dvi/a2dvi.c
+    dvi/tmds.c
+    dvi/tmds_lores.c
+    dvi/tmds_hires.c
+    dvi/tmds_dhgr.c
+
+    render/render.c
+    render/render_splash.c
+    render/render_debug.c
+    render/render_text.c
+    render/render_lores.c
+    render/render_dgr.c
+    render/render_hires.c
+    render/render_dhgr.c
+    render/render_videx.c
+
+    config/config.c
+    config/device_regs.c
+
+    videx/videx_vterm.c
+
+    menu/menu.c
+
+    debug/debug.c
+    util/dmacopy.c
+
+    fonts/textfont.c
+    fonts/iie_us_enhanced.c
+    fonts/iie_us_unenhanced.c
+    fonts/iie_us_reactive.c
+    fonts/iie_uk_enhanced.c
+    fonts/iie_fr_ca_enhanced.c
+    fonts/iie_de_enhanced.c
+    fonts/iie_spanish_enhanced.c
+    fonts/iie_it_enhanced.c
+    fonts/iie_hebrew_enhanced.c
+    fonts/iie_se_fi_enhanced.c
+    fonts/clone_pravetz_cyrillic.c
+    fonts/iiplus_us.c
+    fonts/iiplus_videx_lowercase1.c
+    fonts/iiplus_videx_lowercase2.c
+    fonts/iiplus_pigfont.c
+    fonts/iiplus_jp_katakana.c
+
+    fonts/videx/videx_normal.c
+    fonts/videx/videx_inverse.c
+    fonts/videx/videx_apl.c
+    fonts/videx/videx_french.c
+    fonts/videx/videx_super_sub.c
+    fonts/videx/videx_uppercase.c
+    fonts/videx/videx_epson.c
+    fonts/videx/videx_german.c
+    fonts/videx/videx_katakana.c
+    fonts/videx/videx_spanish.c
+    fonts/videx/videx_symbol.c
+
+    ../libraries/libdvi/dvi.c
+    ../libraries/libdvi/dvi.h
+    ../libraries/libdvi/dvi_config_defs.h
+    ../libraries/libdvi/dvi_serialiser.c
+    ../libraries/libdvi/dvi_serialiser.h
+    ../libraries/libdvi/dvi_timing.c
+    ../libraries/libdvi/dvi_timing.h
+    ../libraries/libdvi/tmds_encode.S
+    ../libraries/libdvi/tmds_encode.c
+    ../libraries/libdvi/tmds_encode.h
+    ../libraries/libdvi/tmds_table.h
+    ../libraries/libdvi/tmds_table_fullres.h
+    ../libraries/libdvi/util_queue_u32_inline.h
      )
+endif()
 
 pico_set_program_name(${BINARY_NAME} "A2C_DVI")
 pico_set_program_version(${BINARY_NAME} "1.7.1")
@@ -188,7 +275,9 @@ pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/applebus/abu
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/libdvi/dvi_serialiser.pio)
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/libdvi/tmds_encode_1bpp.pio)
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/a2c/a2c_SEROUT.pio)
+if (FEATURE_A2_AUDIO)
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/a2c/a2c_SND.pio)
+endif()
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(${BINARY_NAME} 0)

@@ -1,3 +1,27 @@
+/*
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+#ifdef FEATURE_A2_AUDIO
+
 #include "data_packet.h"
 #include <string.h>
 
@@ -241,7 +265,7 @@ int  __not_in_flash_func(set_audio_sample)(data_packet_t *data_packet, const aud
     return frameCt;
 }
 
-void set_audio_clock_regeneration(data_packet_t *data_packet, int cts, int n) {
+void __not_in_flash_func(set_audio_clock_regeneration)(data_packet_t *data_packet, int cts, int n) {
     data_packet->header[0] = 1;
     data_packet->header[1] = 0;
     data_packet->header[2] = 0;
@@ -261,7 +285,7 @@ void set_audio_clock_regeneration(data_packet_t *data_packet, int cts, int n) {
     memcpy(data_packet->subpacket[3], data_packet->subpacket[0], sizeof(data_packet->subpacket[0]));
 }
 
-void set_audio_info_frame(data_packet_t *data_packet, int freq) {
+void __not_in_flash_func(set_audio_info_frame)(data_packet_t *data_packet, int freq) {
     set_null_data_packet(data_packet);
     data_packet->header[0] = 0x84;
     data_packet->header[1] = 1;  // version
@@ -283,7 +307,7 @@ void set_audio_info_frame(data_packet_t *data_packet, int freq) {
     compute_parity(data_packet);
 }
 
-void set_AVI_info_frame(data_packet_t *data_packet, scan_info s, pixel_format y, colorimetry c, picture_aspect_ratio m,
+void __not_in_flash_func(set_AVI_info_frame)(data_packet_t *data_packet, scan_info s, pixel_format y, colorimetry c, picture_aspect_ratio m,
     active_format_aspect_ratio r, RGB_quantization_range q, video_code vic) {
     set_null_data_packet(data_packet);
     data_packet->header[0] = 0x82;
@@ -302,7 +326,7 @@ void set_AVI_info_frame(data_packet_t *data_packet, scan_info s, pixel_format y,
     compute_parity(data_packet);
 }
 
-void encode_data_packet(data_island_stream_t *dst, const data_packet_t *packet, bool vsync, bool hsync) {
+void __not_in_flash_func(encode_data_packet)(data_island_stream_t *dst, const data_packet_t *packet, bool vsync, bool hsync) {
     int hv = (vsync ? 2 : 0) | (hsync ? 1 : 0);
     dst->data[0][0] = makeTERC4x2Char(0b1100 | hv);
     dst->data[1][0] = dataGaurdbandSym_;
@@ -315,3 +339,5 @@ void encode_data_packet(data_island_stream_t *dst, const data_packet_t *packet, 
     dst->data[1][N_DATA_ISLAND_WORDS - 1] = dataGaurdbandSym_;
     dst->data[2][N_DATA_ISLAND_WORDS - 1] = dataGaurdbandSym_;
 }
+
+#endif      //  FEATURE_A2_AUDIO

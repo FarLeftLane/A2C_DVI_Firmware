@@ -61,6 +61,9 @@ int main()
     // enable LED etc
     debug_init();
 
+    // Finish copying remaining data and code from flash to RAM
+    memcpy32(__ram_delayed_copy_start__, __ram_delayed_copy_source__, ((uint32_t)__ram_delayed_copy_end__) - (uint32_t) __ram_delayed_copy_start__);
+
 #ifndef FEATURE_A2C
     // check hardware
     a2dvi_check_hardware();
@@ -84,9 +87,6 @@ int main()
 
 #endif
     boot_time = to_us_since_boot(get_absolute_time());
-
-    // Finish copying remaining data and code from flash to RAM
-    memcpy32(__ram_delayed_copy_start__, __ram_delayed_copy_source__, ((uint32_t)__ram_delayed_copy_end__) - (uint32_t) __ram_delayed_copy_start__);
 
     // DVI processing on core 0
     a2dvi_loop();

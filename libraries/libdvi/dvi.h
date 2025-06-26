@@ -21,7 +21,9 @@ extern "C" {
 #include "dvi_timing.h"
 #include "dvi_serialiser.h"
 #include "util_queue_u32_inline.h"
+#ifdef FEATURE_A2_AUDIO
 #include "data_packet.h"
+#endif
 
 #if 0
 typedef void (*dvi_callback_t)(void);
@@ -33,7 +35,6 @@ struct dvi_inst {
 	struct dvi_lane_dma_cfg dma_cfg[N_TMDS_LANES];
 	struct dvi_timing_state timing_state;
 	struct dvi_serialiser_cfg* ser_cfg;
-
 #if 0
 	// Called in the DMA IRQ once per scanline -- careful with the run time!
 	dvi_callback_t scanline_callback;
@@ -44,7 +45,9 @@ struct dvi_inst {
 	struct dvi_scanline_dma_list dma_list_vblank_nosync;
 	struct dvi_scanline_dma_list dma_list_active;
 	struct dvi_scanline_dma_list dma_list_error;
+#ifdef FEATURE_A2_AUDIO
     struct dvi_scanline_dma_list dma_list_active_blank;
+#endif
 
 	// After a TMDS buffer has been enqueue via a control block for the last
 	// time, two IRQs must go by before freeing. The first indicates the control
@@ -69,7 +72,11 @@ struct dvi_inst {
 	queue_t q_colour_valid;
 	queue_t q_colour_free;
 #endif
-    bool    dvi_started;
+    bool data_island_is_enabled;
+
+	bool    dvi_started;
+	
+#ifdef FEATURE_A2_AUDIO
     uint    dvi_frame_count;
 
     // Data Packet and audio related
@@ -80,13 +87,13 @@ struct dvi_inst {
     int samples_per_frame;
     int samples_per_line16;
     
-    bool data_island_is_enabled;
     data_island_stream_t next_data_stream;
     audio_ring_t  audio_ring;
 
     int left_audio_sample_count;
     int audio_sample_pos;
     int audio_frame_count;
+#endif
 };
 
 // Reports DVI status 1: active 0: inactive
@@ -129,6 +136,7 @@ void dvi_framebuf_main_8bpp(struct dvi_inst *inst);
 void dvi_framebuf_main_16bpp(struct dvi_inst *inst);
 #endif
 
+#ifdef FEATURE_A2_AUDIO
 // Data island (and audio) related api
 void dvi_audio_init(struct dvi_inst *inst);
 void dvi_enable_data_island(struct dvi_inst *inst);
@@ -136,6 +144,7 @@ void dvi_update_data_island_ptr(struct dvi_scanline_dma_list *dma_list, data_isl
 void dvi_audio_sample_buffer_set(struct dvi_inst *inst, audio_sample_t *buffer, int size);
 void dvi_set_audio_freq(struct dvi_inst *inst, int audio_freq, int cts, int n);
 void dvi_update_data_packet(struct dvi_inst *inst);
+#endif
 
 #ifdef __cplusplus
 }

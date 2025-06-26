@@ -37,11 +37,14 @@ SOFTWARE.
 
 #define DVI_SERIAL_CONFIG pico_a2dvi_cfg
 
-struct dvi_inst __attribute__((section (".appledata."))) dvi0;
+// struct dvi_inst __attribute__((section (".appledata."))) dvi0;
+struct dvi_inst dvi0;           //  Need to move this to normal RAM or there is an init race condition 
 
+#ifdef FEATURE_A2_AUDIO
 //  Audio 
 #define AUDIO_BUFFER_SIZE   256
 audio_sample_t      audio_buffer[AUDIO_BUFFER_SIZE];
+#endif
 
 static void a2dvi_init(void)
 {
@@ -83,9 +86,9 @@ void DELAYED_COPY_CODE(a2dvi_dvi_enable)(uint32_t video_mode)
     dvi_init(&dvi0, spinlock1, spinlock2);
 
     // Audio Init
-#if 1
+#ifdef FEATURE_A2_AUDIO
     dvi_audio_sample_buffer_set(&dvi0, audio_buffer, AUDIO_BUFFER_SIZE);
-    dvi_set_audio_freq(&dvi0, 44100, 28000, 6272);          //  25.2 = 28000, 32176 == 720x480  30000 from the table,  30000 for 720 seems best.  640 not working, but works with null packets
+    dvi_set_audio_freq(&dvi0, 44100, 30000, 6272);          //  25.2 = 28000, 32176 == 720x480  30000 from the table,  30000 for 720 seems best.  640 not working, but works with null packets
     dvi_enable_data_island(&dvi0);                          //  
 #endif
 
@@ -118,4 +121,9 @@ void DELAYED_COPY_CODE(a2dvi_loop)(void)
 uint32_t DELAYED_COPY_CODE(a2dvi_scanline_errors)(void)
 {
     return dvi0.scanline_errors;
+}
+
+bool DELAYED_COPY_CODE(a2dvi_started)(void)
+{
+    return dvi_is_started(&dvi0);
 }

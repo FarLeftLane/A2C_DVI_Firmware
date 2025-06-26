@@ -34,13 +34,17 @@ SOFTWARE.
 #include "render/render.h"
 #include "applebus/abus_pin_config.h"
 #include "a2c_SEROUT.pio.h"
+#ifdef FEATURE_A2_AUDIO
 #include "a2c_SND.pio.h"
+#endif
 
 #include "config/config.h"
 #include "menu/menu.h"
 #include "debug/debug.h"
+#include "dvi/a2dvi.h"
 
-// #define NO_NTSC_LUT     1    //  If we need extra memory for testing
+
+#define NO_NTSC_LUT     1    //  If we need extra memory for testing
 
 #include "hgrdecode_LUT.h"
 
@@ -71,8 +75,10 @@ uint s_a2c_sm;                                      //  PIO state machine for SE
 uint s_a2c_snd_sm;                                  //  PIO state machine for SND
 
 static uint32_t s_a2c_data = 0;
+#ifdef FEATURE_A2_AUDIO
 static uint32_t s_a2c_snd_data = 0;
 static uint32_t s_a2c_snd_data_count = 0;
+#endif
 
 #define A2C_DATA_RX 0x00000001
 #define A2C_SND_RX 0x00000002
@@ -92,11 +98,13 @@ bool s_button_state = false;                        //  State of the button
 uint64_t s_last_BUTTON = 0;                         //  Last state of the button to track transitions
 const uint64_t s_long_button_press = (500 * 1000);  //  500,000 microseconds (half second)
 
-static uint64_t s_a2c_boot_time = 1;                //  Keep track of the time spent waiting on A2C video data for debugging
-static uint64_t s_total_PIO_time = 1;
-static uint64_t s_blocking_PIO_time = 1;
-static uint64_t s_total_render_time = 1;
-static uint64_t s_render_time = 1;
+uint64_t s_a2c_boot_time = 1;                       //  Keep track of the time spent waiting on A2C video data for debugging
+uint64_t s_total_PIO_time = 1;
+uint64_t s_blocking_PIO_time = 1;
+uint64_t s_total_render_time = 1;
+uint64_t s_render_time = 1;
+uint32_t s_debug_value_1 = 0;
+uint32_t s_debug_value_2 = 0;
 
 
 //  We repurpose cfg_color_style, default is 2
@@ -123,7 +131,7 @@ void __time_critical_func(WNDW_irq_callback)(uint gpio, uint32_t event_mask)
     }
 }
 
-void wait_frame_start()
+void __time_critical_func(wait_frame_start)()
 {
     bool framestart = false;
     while (gpio_get(PIN_WNDW) == false)
@@ -178,7 +186,7 @@ bool __time_critical_func(repeating_timer_callback)(__unused struct repeating_ti
 bool s_needs_reboot = false;
 bool s_save_required = false;
 
-void software_reset()
+void DELAYED_COPY_CODE(software_reset)()
 {
     //  Wait for the button to come up
     while (gpio_get(PIN_BUTTON) == true)
@@ -801,6 +809,16 @@ void DELAYED_COPY_CODE(update_a2c_debug_monitor)(void)
         s_debug_monitor_cleared = true;
     }
 
+#if 0
+    uint8_t* line3 = &status_line[80];
+    if ((frame_counter & 3) == 0)           // do not update too fast, so data remains readable
+    {
+        int2hex(&line3[18], s_debug_value_1, 8);
+        int2hex(&line3[18+9], s_debug_value_2, 8);
+    }
+
+#else
+
     uint8_t* line1 = status_line;
     uint8_t* line2 = &status_line[40];
     uint8_t* line3 = &status_line[80];
@@ -837,18 +855,25 @@ void DELAYED_COPY_CODE(update_a2c_debug_monitor)(void)
         int2str(frame_counter, s_temp_line_buffer, 8);
         copy_str(&line2[0+8], s_temp_line_buffer);
 
+#ifdef FEATURE_A2_AUDIO
         copy_str(&line2[7+4+1+7+4+1], "Snd: ");
         float time_f = s_total_PIO_time / 1000000.0;
-        float snd_rate = (float)s_a2c_snd_data_count / time_f;
+        float snd_rate = 110.0;
+        if (time_f != 0.0)
+            snd_rate = (float)s_a2c_snd_data_count / time_f;
         uint32_t snd_rate_int = snd_rate;
         int2str(snd_rate_int, s_temp_line_buffer, 6);
         copy_str(&line2[7+4+1+7+4+1+6], s_temp_line_buffer);
+#endif
 
         bool snd = gpio_get(PIN_SND);
         if (snd)
             copy_str(&line3[0], "GP5: On ");
         else
             copy_str(&line3[0], "GP5: Off");
+
+        int2hex(&line3[18], s_debug_value_1, 8);
+        int2hex(&line3[18+9], s_debug_value_2, 8);
     }
 
     if ((frame_counter & 0x0F) == 0)         // do not update too fast, so data remains readable
@@ -859,6 +884,7 @@ void DELAYED_COPY_CODE(update_a2c_debug_monitor)(void)
         int2hex(&line4[18], s_screen_buffer[2][2], 8);
         int2hex(&line4[18+9], s_screen_buffer[2][3], 8);
     }
+#endif
 }
 
 void DELAYED_COPY_CODE(render_a2c_debug)(bool IsVidexMode, bool top)
@@ -1159,8 +1185,6 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
 
 void DELAYED_COPY_CODE(render_a2c)()
 {
-    uint64_t start_time = to_us_since_boot (get_absolute_time());
-
     //  Update the button state and selections
     process_button();
 
@@ -1249,10 +1273,6 @@ void DELAYED_COPY_CODE(render_a2c)()
              render_color_text40_line(line);
          }
     }
-
-    uint64_t end_time = to_us_since_boot (get_absolute_time());
-    s_total_render_time = end_time - s_a2c_boot_time;
-    s_render_time = s_render_time + (end_time - start_time);
 }
 
 
@@ -1304,11 +1324,14 @@ void __time_critical_func(a2c_init)()
     // PIO setup
     // Load the a2c_input program, and configure a free state machine to run the program.
     s_pio = pio0;
-    uint a2c_offset = pio_add_program(s_pio, &a2c_input_program);
+    int a2c_offset = pio_add_program(s_pio, &a2c_input_program);
+#ifdef FEATURE_A2_AUDIO
     uint snd_offset = pio_add_program(s_pio, &a2c_snd_input_program);
-
+#endif
     s_a2c_sm = pio_claim_unused_sm(s_pio, true);
+#ifdef FEATURE_A2_AUDIO
     s_a2c_snd_sm = pio_claim_unused_sm(s_pio, true);
+#endif
 
     //  Setup a repeating timer to keep an eye on WNDW an see if it has stopped
     add_repeating_timer_ms(500, repeating_timer_callback, NULL, &s_repeating_timer);
@@ -1325,18 +1348,21 @@ void __time_critical_func(a2c_init)()
 
     //  Start the PIO program
     a2c_input_program_init(s_pio, s_a2c_sm, a2c_offset, PIO_INPUT_PIN_BASE);
+#ifdef FEATURE_A2_AUDIO
     a2c_snd_input_program_init(s_pio, s_a2c_snd_sm, snd_offset, PIO_SND_INPUT_PIN_BASE);
+#endif
 }
 
+#ifdef FEATURE_A2_AUDIO
 // Audio Related
 int16_t DELAYED_COPY_DATA(sine)[32] = {
-    0x8000,0x98f8,0xb0fb,0xc71c,0xda82,0xea6d,0xf641,0xfd89,
-    0xffff,0xfd89,0xf641,0xea6d,0xda82,0xc71c,0xb0fb,0x98f8,
-    0x8000,0x6707,0x4f04,0x38e3,0x257d,0x1592,0x9be,0x276,
-    0x0,0x276,0x9be,0x1592,0x257d,0x38e3,0x4f04,0x6707
+    0x8000,0x98f8,0xb0fb,0xc71c,0xda82,0xea6d,0xf641,0xfd89,        //  -32768 to -631
+    0xffff,0xfd89,0xf641,0xea6d,0xda82,0xc71c,0xb0fb,0x98f8,        //  -1 to -26376
+    0x8000,0x6707,0x4f04,0x38e3,0x257d,0x1592,0x9be,0x276,          //  -32768 to 630
+    0x0,0x276,0x9be,0x1592,0x257d,0x38e3,0x4f04,0x6707              //  0 to 26375
 };
 
-static uint sample_count = 0;
+static uint s_sample_count = 0;
 
 /*
 bool audio_timer_callback(uint32_t snd_data) 
@@ -1348,7 +1374,7 @@ bool audio_timer_callback(uint32_t snd_data)
     audio_sample_t *audio_ptr = get_write_pointer(&dvi0.audio_ring);
     audio_sample_t sample;
     for (int cnt = 0; cnt < size; cnt++) {
-        uint sample_index = (sample_count >> 2) % 32;
+        uint sample_index = (s_sample_count >> 2) % 32;
 #if 0
         if (snd_data == 0)
             sample.channels[0] = 0x38e3;
@@ -1358,7 +1384,7 @@ bool audio_timer_callback(uint32_t snd_data)
         sample.channels[0] = sine[sample_index];
         sample.channels[1] = sine[sample_index];
         *audio_ptr++ = sample;
-        sample_count++;
+        s_sample_count++;
     }
     increase_write_pointer(&dvi0.audio_ring, size);
  
@@ -1366,7 +1392,187 @@ bool audio_timer_callback(uint32_t snd_data)
 }
 */
 
-bool add_sound_sample(uint32_t snd_data) 
+/*
+    PIN_SND is read at 32x 44100Hz (1.4112 MHz) as a 1 bit input by PIO, 32-bits at a time from the FIFO.  These 32 bits are considered sub samples
+
+    For each sub sample
+        If the bit changes, setup and apply a new direction, rate and cycle count
+        If the bit stays the same, applly the rate and cycle count until cycle count is zero
+        if cycle count is zero and we were in an attack phase, switch to decay phase
+        if the sample value crosses zero, stop decay and zero out
+    
+    For each 32 sub sampels, generate a sample value, apply volume controls and add_sound_sample
+*/
+
+//  142 / 7   0.586 / 1696
+#define SND_ATTACK_RATE 284         //  142 * 7 = 994  284 * 7 = 1736
+#define SND_ATTACK_SUB_SAMPLES 7
+#define SND_DECAY_RATE 1
+#define SND_DECAY_SUB_CYCLES 1736
+
+int16_t s_last_sample = 0;
+bool s_last_bit = false;
+int32_t s_rate_count = 1;
+int16_t s_snd_rate = SND_DECAY_RATE;
+bool s_attack = false;
+bool s_snd_steady = true;
+
+#if 0
+
+uint32_t DELAYED_COPY_CODE(debounce_sound_sub_sampless)(uint32_t sub_sample_data)
+{
+    return 0;
+}
+
+//  Return a signed sample value
+int16_t DELAYED_COPY_CODE(process_sound_sub_samples)(uint32_t sub_sample_data)
+{
+    /*
+    if (s_snd_steady == true)
+    {
+        //  Attack and decay are complete and we are at zero with no change in the input
+        if ((s_last_bit == false) && (sub_sample_data == 0))
+            return 0;
+
+        if ((s_last_bit == true) && (sub_sample_data == 0xFFFFFFFF))
+            return 0;
+    }
+    */
+
+    for (int i = 0; i < 32; i++)
+    {
+        bool bit = ((sub_sample_data & 0x01) == 1);
+
+        if (bit != s_last_bit)
+        {
+            if (s_rate_count < (SND_ATTACK_SUB_SAMPLES - 0))
+            {
+                if (bit == true)
+                {
+                    //  Transitioning from 0 to 1, start an attack
+                    s_rate_count = SND_ATTACK_SUB_SAMPLES;
+                    s_snd_rate = SND_ATTACK_RATE;
+                    s_attack = true;
+                    s_snd_steady = false;
+                }
+                else
+                {
+                    //  Transitioning from 1 to 0, start a negative attack
+                    s_rate_count = SND_ATTACK_SUB_SAMPLES;
+                    s_snd_rate = -SND_ATTACK_RATE;
+                    s_attack = true;
+                    s_snd_steady = false;
+                }
+
+                s_last_bit = bit;
+            }
+        }
+                s_last_bit = bit;
+
+        s_rate_count--;
+        
+        if (s_rate_count == 0)
+        {
+            if (s_attack == true)
+            {
+                //  Transition to decay
+                s_attack = false;
+                if (s_snd_rate > 0)
+                {
+                    s_rate_count = SND_DECAY_SUB_CYCLES;
+                    s_snd_rate = -SND_DECAY_RATE;
+                }
+                else
+                {
+                    s_rate_count = SND_DECAY_SUB_CYCLES;
+                    s_snd_rate = SND_DECAY_RATE;
+                }
+
+                s_last_bit = bit;
+            }
+            else
+            {
+                //  decay is done, steady state
+                s_snd_steady = true;
+                s_snd_rate = 0;
+                s_last_sample = 0;      //  should probably do something else here...
+
+                s_last_bit = bit;
+            }
+        }
+                
+        s_last_sample = s_last_sample + s_snd_rate;
+
+        if (s_last_sample > 2000)
+            s_last_sample = 2000;
+        if (s_last_sample < -2000)
+            s_last_sample = -2000;
+        
+        sub_sample_data = sub_sample_data >> 1;
+    }
+
+    return s_last_sample;
+}
+
+#else
+//  Return a signed sample value
+int16_t tone_process_sound_sub_samples(uint32_t sub_sample_data)
+{
+    uint32_t count = s_sample_count % 23;
+
+    if (count == 0)
+    {
+        s_last_sample = -s_last_sample;
+    }
+
+    return s_last_sample;
+}
+
+
+//  Return a signed sample value
+int16_t square_process_sound_sub_samples(uint32_t sub_sample_data)
+{
+    if (sub_sample_data == 0)
+        s_last_sample = -2000;
+    else
+        s_last_sample = 2000;
+
+    return s_last_sample;
+}
+
+//  Return a signed sample value
+int16_t process_sound_sub_samples(uint32_t sub_sample_data)
+{
+    if (sub_sample_data == 0)
+        s_last_sample = -1000;
+    else if (sub_sample_data == 0xFFFFFFFF)
+        s_last_sample = 1000;
+    else
+    {
+        int sub_cnt = 0;
+
+        for (int i = 0; i < 32; i++)
+        {
+            if ((sub_sample_data & 0x01) == 1)
+                sub_cnt++;
+            
+            sub_sample_data = sub_sample_data >> 1;
+        }
+
+        if (s_last_sample > 0)
+            s_last_sample = (sub_cnt * 1000) / 32;
+        else
+            s_last_sample = -((sub_cnt * 1000) / 32);
+        
+        s_debug_value_2++;
+    }
+
+    return s_last_sample;
+}
+
+#endif
+
+bool __time_critical_func(add_sound_sample)(uint32_t snd_data) 
 {
     if (dvi0.audio_ring.buffer == NULL)
         return false;
@@ -1378,75 +1584,36 @@ bool add_sound_sample(uint32_t snd_data)
         if (audio_ptr != NULL)
         {
             audio_sample_t sample;
-            uint sample_index = (sample_count >> 2) % 32;
 
-            if (snd_data != 0)
-                sample.channels[0] = sine[sample_index];
-            else
-                sample.channels[0] = 0x8000;
+            sample.channels[0] = process_sound_sub_samples(snd_data);
 
             sample.channels[1] = sample.channels[0];
 
+            s_debug_value_1 = (uint32_t)audio_ptr;
+            
             *audio_ptr = sample;
-            sample_count++;
+            s_sample_count++;
 
             increase_write_pointer(&dvi0.audio_ring, 1);
         }
+        else
+        {
+            s_debug_value_2++;
+            __mem_fence_release();
+        }
+    }
+    else
+    {
+        s_debug_value_2++;
+        __mem_fence_release();
     }
 
     return true;
 }
 
+#endif			//	FEATURE_A2_AUDIO
 
-
-#if 0
-void __time_critical_func(a2c_loop)()
-{
-    // initialize the Apple IIc interface
-    a2c_init();
-    s_a2c_boot_time = to_us_since_boot (get_absolute_time());
-
-    //  Loop forever reading from the PIO RX queue
-    while (true) 
-    {
-        int y;
-        
-        //  We read 18 *32 = 576 bits per line
-        for (int x = 0; x < 18; x++)
-        {
-            uint64_t start_time = to_us_since_boot (get_absolute_time());
-
-            //uint32_t rxdata = pio_sm_get_blocking(s_pio, s_a2c_sm);
-            if (pio_sm_is_rx_fifo_empty(s_pio, s_a2c_sm) == false)
-            {
-                uint32_t rxdata = pio_sm_get(s_pio, s_a2c_sm);
-
-                uint64_t end_time = to_us_since_boot (get_absolute_time());
-                s_total_PIO_time = end_time - s_a2c_boot_time;
-                s_blocking_PIO_time = s_blocking_PIO_time + (end_time - start_time);
-
-                if (x == 0)
-                {
-                    //  Delay reading s_scanline until we have the first bytes, this is updated in the WNDW interrupt handler
-                    y = s_scanline % 192;
-                    s_scanline++;
-                    
-                    //  record the state of the GR pin to know if this is a color or B&W line
-                    s_screen_GR_buffer[y] = gpio_get(PIN_GR);
-                    s_screen_TEXT_buffer[y] = gpio_get(PIN_TEXT);
-                }
-                
-                //  SEROUT is inverted from memory bits
-                s_screen_buffer[y][x] = ~rxdata;
-            }
-        }
-
-        //  We increment this just so the diagnostics show there is activity
-        bus_cycle_counter++;
-    }
-}
-
-#else
+#if 1
 
 uint32_t __time_critical_func(pio_get_multiple)(bool block)
 {
@@ -1461,12 +1628,14 @@ uint32_t __time_critical_func(pio_get_multiple)(bool block)
             result |= A2C_DATA_RX;
         }
 
+#ifdef FEATURE_A2_AUDIO
         if (pio_sm_is_rx_fifo_empty(s_pio, s_a2c_snd_sm) == false)
         {
             s_a2c_snd_data = pio_sm_get(s_pio, s_a2c_snd_sm);
             s_a2c_snd_data_count++;
             result |= A2C_SND_RX;
         }
+#endif
 
         if (block == false)
             break;
@@ -1487,7 +1656,7 @@ void __time_critical_func(a2c_loop)()
     s_a2c_boot_time = to_us_since_boot (get_absolute_time());
 
     //  Turn on debug lines
-    SET_IFLAG(1, IFLAGS_DEBUG_LINES);
+    // SET_IFLAG(1, IFLAGS_DEBUG_LINES);
 
     int x = 0;      //  These are the a2c "screen" indexes
     int y = 0;
@@ -1496,10 +1665,11 @@ void __time_critical_func(a2c_loop)()
     while (true) 
     {
         uint32_t rxflags = pio_get_multiple(true);
-
+        
         if ((rxflags & A2C_DATA_RX) != 0)
         {
             uint32_t rxdata = s_a2c_data;
+            // uint32_t rxdata = pio_sm_get_blocking(s_pio, s_a2c_sm);
 
             if (x == 0)
             {
@@ -1521,57 +1691,19 @@ void __time_critical_func(a2c_loop)()
             //  We increment this just so the diagnostics show there is activity
             bus_cycle_counter++;
         }
-
-        if ((rxflags & A2C_DATA_RX) != 0)
+#ifdef FEATURE_A2_AUDIO
+        if ((rxflags & A2C_SND_RX) != 0)
         {
-            //  Process some audio
-            add_sound_sample(s_a2c_snd_data);
+            //  Process some audio when 
+            if (a2dvi_started() == true)
+                add_sound_sample(s_a2c_snd_data);
         }
-    }
-}
 #endif
-
-
-/*
-
-
-uint32_t __time_critical_func(pio_get_multiple)()
-{
-    uint32_t result = 0;
-
-    //while (result == 0)
-    {
-        if (0)
-        {
-            uint32_t rxdata = pio_sm_get_blocking(s_pio, s_a2c_sm);
-            s_a2c_data = rxdata;
-            result |= A2C_DATA_RX;
-        }
-        else
-        {
-            if (pio_sm_is_rx_fifo_empty(s_pio, s_a2c_sm) == false)
-            {
-                s_a2c_data = pio_sm_get(s_pio, s_a2c_sm);
-                result |= A2C_DATA_RX;
-            }
-        }
-
-        
-        if (1)
-        {
-            if (pio_sm_is_rx_fifo_empty(s_pio, s_a2c_snd_sm) == false)
-            {
-                s_a2c_snd_data = pio_sm_get(s_pio, s_a2c_snd_sm);
-                s_a2c_snd_data_count++;
-                result |= A2C_SND_RX;
-            }
-        }
     }
-
-    return result;
 }
 
 
+#else   //  simple version
 void __time_critical_func(a2c_loop)()
 {
     // initialize the Apple IIc interface
@@ -1613,5 +1745,4 @@ void __time_critical_func(a2c_loop)()
         bus_cycle_counter++;
     }
 }
-    
-*/
+#endif
