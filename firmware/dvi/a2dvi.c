@@ -87,9 +87,27 @@ void DELAYED_COPY_CODE(a2dvi_dvi_enable)(uint32_t video_mode)
 
     // Audio Init
 #ifdef FEATURE_A2_AUDIO
+    static bool enable_sound = false;
+
     dvi_audio_sample_buffer_set(&dvi0, audio_buffer, AUDIO_BUFFER_SIZE);
-    dvi_set_audio_freq(&dvi0, 44100, 30000, 6272);          //  25.2 = 28000, 32176 == 720x480  30000 from the table,  30000 for 720 seems best.  640 not working, but works with null packets
-    dvi_enable_data_island(&dvi0);                          //  
+    switch (video_mode)
+    {
+        case Dvi640x480:
+            dvi_set_audio_freq(&dvi0, 44100, 28000, 6272);          //  640x480 = 25.2MHz = 28000/6272
+            enable_sound = true;
+            break;
+
+        case Dvi720x480:
+            dvi_set_audio_freq(&dvi0, 44100, 30000, 6272);          //  720x480 = 27MHz = 30000/6272 
+            enable_sound = true;
+            break;
+
+        default:
+            enable_sound = false;
+            break;
+    };
+    if (enable_sound)
+        dvi_enable_data_island(&dvi0);                              //  Only enable data island (sound) if we have a valid config.
 #endif
 
     dvi_register_irqs_this_core(&dvi0, DMA_IRQ_0);

@@ -59,6 +59,7 @@
         "audio_ring.h": "c",
         "compare": "c",
         "format": "c",
-        "watchdog.h": "c"
+        "watchdog.h": "c",
+        "algorithm": "c"
     }
 }
