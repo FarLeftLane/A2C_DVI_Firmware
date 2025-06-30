@@ -309,6 +309,7 @@ target_link_libraries(${BINARY_NAME}
         hardware_pio
         hardware_interp
         hardware_pwm
+        hardware_adc
         pico_stdlib
         )
 

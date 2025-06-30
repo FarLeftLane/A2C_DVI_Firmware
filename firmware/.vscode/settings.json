@@ -58,6 +58,7 @@
         "cstdint": "c",
         "audio_ring.h": "c",
         "compare": "c",
-        "format": "c"
+        "format": "c",
+        "watchdog.h": "c"
     }
 }

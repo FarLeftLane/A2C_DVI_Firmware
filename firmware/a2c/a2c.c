@@ -35,6 +35,7 @@ SOFTWARE.
 #include "applebus/abus_pin_config.h"
 #include "a2c_SEROUT.pio.h"
 #ifdef FEATURE_A2_AUDIO
+#include <hardware/adc.h>
 #include "a2c_SND.pio.h"
 #endif
 
@@ -1278,6 +1279,10 @@ void DELAYED_COPY_CODE(render_a2c)()
 
 void __time_critical_func(a2c_init)()
 {
+#ifdef FEATURE_A2_AUDIO
+    adc_init();
+#endif
+
     //  init and turn off pins we don't need
     gpio_init(CONFIG_PIN_APPLEBUS_PHI0);
     gpio_set_pulls(CONFIG_PIN_APPLEBUS_PHI0, false, false);
@@ -1321,16 +1326,26 @@ void __time_critical_func(a2c_init)()
     if (s_button_state == true)
         config_load_defaults();                 //  A2C_DVI  Force defaults if button is down at boot
 
+#ifdef FEATURE_A2_AUDIO
+    adc_gpio_init(27);                                  //  GPIO27 for analog sound input
+    adc_select_input(1);                                //  GPIO27 is ADC1
+    adc_set_round_robin(0x01 << 1);                     //  Bit 1 is ADC1
+    adc_irq_set_enabled(false);                         //  No IRQ
+    adc_set_clkdiv(1087.40);                            //  48MHz / 44.1KHz / 1088.435374
+    adc_fifo_setup(true, false, 0, false, false);       //  enable = true, DMA = false, 0 dma, no errors, no byte shift
+    adc_run(true);                                      //  enable free running mode
+#endif
+
     // PIO setup
     // Load the a2c_input program, and configure a free state machine to run the program.
     s_pio = pio0;
     int a2c_offset = pio_add_program(s_pio, &a2c_input_program);
 #ifdef FEATURE_A2_AUDIO
-    uint snd_offset = pio_add_program(s_pio, &a2c_snd_input_program);
+//    uint snd_offset = pio_add_program(s_pio, &a2c_snd_input_program);
 #endif
     s_a2c_sm = pio_claim_unused_sm(s_pio, true);
 #ifdef FEATURE_A2_AUDIO
-    s_a2c_snd_sm = pio_claim_unused_sm(s_pio, true);
+//    s_a2c_snd_sm = pio_claim_unused_sm(s_pio, true);
 #endif
 
     //  Setup a repeating timer to keep an eye on WNDW an see if it has stopped
@@ -1349,7 +1364,7 @@ void __time_critical_func(a2c_init)()
     //  Start the PIO program
     a2c_input_program_init(s_pio, s_a2c_sm, a2c_offset, PIO_INPUT_PIN_BASE);
 #ifdef FEATURE_A2_AUDIO
-    a2c_snd_input_program_init(s_pio, s_a2c_snd_sm, snd_offset, PIO_SND_INPUT_PIN_BASE);
+//    a2c_snd_input_program_init(s_pio, s_a2c_snd_sm, snd_offset, PIO_SND_INPUT_PIN_BASE);
 #endif
 }
 
@@ -1541,7 +1556,7 @@ int16_t square_process_sound_sub_samples(uint32_t sub_sample_data)
 }
 
 //  Return a signed sample value
-int16_t process_sound_sub_samples(uint32_t sub_sample_data)
+int16_t attack_process_sound_sub_samples(uint32_t sub_sample_data)
 {
     if (sub_sample_data == 0)
         s_last_sample = -1000;
@@ -1570,9 +1585,24 @@ int16_t process_sound_sub_samples(uint32_t sub_sample_data)
     return s_last_sample;
 }
 
+
+//  Return a signed sample value
+int16_t process_sound_sub_samples(uint32_t sub_sample_data)
+{    
+    int16_t sample = ((int16_t)sub_sample_data) - 1728;                   //  samples seem to be from 0-2048 (272 - 1712)
+    
+#if 0
+    if ((sub_sample_data > 512) && (sub_sample_data < 1280))
+        sample = 0;
 #endif
 
-bool __time_critical_func(add_sound_sample)(uint32_t snd_data) 
+    return sample;
+}
+
+
+#endif
+
+bool __time_critical_func(add_sound_sample_PIO)(uint32_t snd_data) 
 {
     if (dvi0.audio_ring.buffer == NULL)
         return false;
@@ -1611,6 +1641,66 @@ bool __time_critical_func(add_sound_sample)(uint32_t snd_data)
     return true;
 }
 
+uint32_t s_snd_high = 0;
+uint32_t s_snd_low = 0;
+uint32_t s_snd_sum = 0;
+
+bool __time_critical_func(add_sound_sample)(uint32_t snd_data) 
+{
+    if (dvi0.audio_ring.buffer == NULL)
+        return false;
+
+    int size = get_write_size(&dvi0.audio_ring, false);
+    if (size > 0)
+    {
+        audio_sample_t *audio_ptr = get_write_pointer(&dvi0.audio_ring);
+        if (audio_ptr != NULL)
+        {
+            audio_sample_t sample;
+
+            sample.channels[0] = process_sound_sub_samples(snd_data);
+
+            sample.channels[1] = sample.channels[0];
+
+            if (snd_data > s_snd_high)
+                s_snd_high = snd_data;
+            
+            if (s_snd_low == 0)
+                s_snd_low = snd_data;
+            
+            if (snd_data < s_snd_low)
+                s_snd_low = snd_data;
+
+            *audio_ptr = sample;
+            s_sample_count++;
+            s_snd_sum = s_snd_sum + snd_data;
+
+            if ((s_sample_count % (44100 * 5)) == 0)
+            {
+                s_debug_value_1 = s_snd_sum / s_sample_count;
+                s_debug_value_2 = s_snd_high - s_snd_low;
+                s_snd_sum = 0;
+                s_sample_count = 0;
+
+                s_snd_high = snd_data;
+                s_snd_low = snd_data;
+            }
+
+            increase_write_pointer(&dvi0.audio_ring, 1);
+        }
+        else
+        {
+            __mem_fence_release();
+        }
+    }
+    else
+    {
+        __mem_fence_release();
+    }
+
+    return true;
+}
+
 #endif			//	FEATURE_A2_AUDIO
 
 #if 1
@@ -1629,14 +1719,22 @@ uint32_t __time_critical_func(pio_get_multiple)(bool block)
         }
 
 #ifdef FEATURE_A2_AUDIO
-        if (pio_sm_is_rx_fifo_empty(s_pio, s_a2c_snd_sm) == false)
+//        if (pio_sm_is_rx_fifo_empty(s_pio, s_a2c_snd_sm) == false)
+//        {
+//            s_a2c_snd_data = pio_sm_get(s_pio, s_a2c_snd_sm);
+//            s_a2c_snd_data_count++;
+//            result |= A2C_SND_RX;
+//        }
+#endif
+
+#ifdef FEATURE_A2_AUDIO
+        if (adc_fifo_is_empty() == false)
         {
-            s_a2c_snd_data = pio_sm_get(s_pio, s_a2c_snd_sm);
+            s_a2c_snd_data = adc_fifo_get();
             s_a2c_snd_data_count++;
             result |= A2C_SND_RX;
         }
 #endif
-
         if (block == false)
             break;
     }
