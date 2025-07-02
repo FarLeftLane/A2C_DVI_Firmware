@@ -30,6 +30,7 @@ void __dvi_func(dvi_init)(struct dvi_inst *inst, uint spinlock_tmds_queue, uint 
 	inst->dvi_started = false;
     inst->timing_state.v_ctr  = 0;
 	inst->data_island_is_enabled = false;
+	inst->audio_enabled = false;
 #ifdef FEATURE_A2_AUDIO
     inst->dvi_frame_count = 0;
     dvi_audio_init(inst);
@@ -344,7 +345,10 @@ static void __dvi_func(dvi_dma_irq_handler)(struct dvi_inst *inst)
 	}
 #ifdef FEATURE_A2_AUDIO
     if (inst->data_island_is_enabled) {
-        dvi_update_data_packet(inst);
+		if (inst->audio_enabled)
+        	dvi_update_data_packet(inst);
+		else
+			dvi_update_data_packet_null(inst);
     }
 #endif
 }
@@ -442,6 +446,7 @@ void __dvi_func(dvi_destroy)(struct dvi_inst *inst, uint irq_num)
 // DVI Data island related
 void __dvi_func(dvi_audio_init)(struct dvi_inst *inst) {
     inst->data_island_is_enabled = false;
+	inst->audio_enabled = false;
     inst->audio_freq = 0;
     inst->samples_per_frame = 0;
     inst->samples_per_line16 = 0;
@@ -467,6 +472,7 @@ void __dvi_func(dvi_enable_data_island)(struct dvi_inst *inst) {
     dvi_update_data_island_ptr(&inst->dma_list_active_blank,  &inst->next_data_stream);
 
     inst->data_island_is_enabled  = true;
+	//	inst->audio_enabled is set seperately
 }
 
 void __dvi_func(dvi_update_data_island_ptr)(struct dvi_scanline_dma_list *dma_list, data_island_stream_t *stream) {
@@ -550,7 +556,6 @@ bool __dvi_func(dvi_update_data_packet_data)(struct dvi_inst *inst, data_packet_
     return false;
 }
 
-#if 1
 void __dvi_func(dvi_update_data_packet)(struct dvi_inst *inst) {
     data_packet_t packet;
     if (!dvi_update_data_packet_data(inst, &packet)) {
@@ -560,14 +565,17 @@ void __dvi_func(dvi_update_data_packet)(struct dvi_inst *inst) {
     encode_data_packet(&inst->next_data_stream, &packet, inst->timing->v_sync_polarity == vsync, inst->timing->h_sync_polarity);
 }
 
-#else		//	just null packets
-
-void __dvi_func(dvi_update_data_packet)(struct dvi_inst *inst) {
+void __dvi_func(dvi_update_data_packet_null)(struct dvi_inst *inst) {
     data_packet_t packet;
     set_null_data_packet(&packet);
     bool vsync = inst->timing_state.v_state == DVI_STATE_SYNC;
     encode_data_packet(&inst->next_data_stream, &packet, inst->timing->v_sync_polarity == vsync, inst->timing->h_sync_polarity);
 }
-#endif
+
+void __dvi_func(dvi_audio_enable)(struct dvi_inst *inst, bool enable)
+{
+	if (inst->data_island_is_enabled == true)
+		inst->audio_enabled = enable;
+}
 
 #endif		//	FEATURE_A2_AUDIO

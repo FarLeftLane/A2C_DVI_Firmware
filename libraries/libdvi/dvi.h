@@ -73,6 +73,7 @@ struct dvi_inst {
 	queue_t q_colour_free;
 #endif
     bool data_island_is_enabled;
+	bool audio_enabled;
 
 	bool    dvi_started;
 	
@@ -144,6 +145,8 @@ void dvi_update_data_island_ptr(struct dvi_scanline_dma_list *dma_list, data_isl
 void dvi_audio_sample_buffer_set(struct dvi_inst *inst, audio_sample_t *buffer, int size);
 void dvi_set_audio_freq(struct dvi_inst *inst, int audio_freq, int cts, int n);
 void dvi_update_data_packet(struct dvi_inst *inst);
+void dvi_update_data_packet_null(struct dvi_inst *inst);
+void dvi_audio_enable(struct dvi_inst *inst, bool enable);
 #endif
 
 #ifdef __cplusplus

@@ -43,7 +43,7 @@ struct dvi_inst dvi0;           //  Need to move this to normal RAM or there is 
 #ifdef FEATURE_A2_AUDIO
 //  Audio 
 #define AUDIO_BUFFER_SIZE   256
-audio_sample_t      audio_buffer[AUDIO_BUFFER_SIZE];
+audio_sample_t audio_buffer[AUDIO_BUFFER_SIZE];
 #endif
 
 static void a2dvi_init(void)
@@ -87,7 +87,7 @@ void DELAYED_COPY_CODE(a2dvi_dvi_enable)(uint32_t video_mode)
 
     // Audio Init
 #ifdef FEATURE_A2_AUDIO
-    static bool enable_sound = false;
+    bool enable_sound = cfg_audio_enabled;                          //  Check the saved config for enable state
 
     dvi_audio_sample_buffer_set(&dvi0, audio_buffer, AUDIO_BUFFER_SIZE);
     switch (video_mode)
@@ -105,9 +105,12 @@ void DELAYED_COPY_CODE(a2dvi_dvi_enable)(uint32_t video_mode)
         default:
             enable_sound = false;
             break;
-    };
-    if (enable_sound)
-        dvi_enable_data_island(&dvi0);                              //  Only enable data island (sound) if we have a valid config.
+    }
+
+    if (cfg_audio_enabled)
+        dvi0.audio_enabled = enable_sound;                          //  We want to eable sound, but the video mode might not allow that
+
+    dvi_enable_data_island(&dvi0);
 #endif
 
     dvi_register_irqs_this_core(&dvi0, DMA_IRQ_0);
@@ -145,3 +148,18 @@ bool DELAYED_COPY_CODE(a2dvi_started)(void)
 {
     return dvi_is_started(&dvi0);
 }
+
+#ifdef FEATURE_A2_AUDIO
+
+void DELAYED_COPY_CODE(a2dvi_audio_enable)(bool enable)
+{
+    cfg_audio_enabled = enable;
+    dvi_audio_enable(&dvi0, enable);
+}
+
+bool DELAYED_COPY_CODE(a2dvi_audio_enabled)(void)
+{
+    return dvi0.audio_enabled;
+}
+
+#endif  // FEATURE_A2_AUDIO

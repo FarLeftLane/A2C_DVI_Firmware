@@ -264,12 +264,14 @@ static uint32_t __attribute__((aligned(8))) __dvi_const(black_scanline_tmds)[3] 
 	0x7fd00u, // 0x00, 0x00
 };
 
+#ifdef FEATURE_A2_AUDIO
 // Video Gaurdband
 static uint32_t __attribute__((aligned(8))) __dvi_const(video_gaurdband_syms)[3] = {
 	0b10110011001011001100,
 	0b01001100110100110011,
 	0b10110011001011001100,
 };
+#endif
 
 void __dvi_func(dvi_timing_state_init)(struct dvi_timing_state *t)
 {

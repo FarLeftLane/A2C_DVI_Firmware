@@ -33,12 +33,9 @@ SOFTWARE.
 #include "applebus/buffers.h"
 #include "render/render.h"
 #include "applebus/abus_pin_config.h"
-#include "a2c_SEROUT.pio.h"
+#include "build/a2c_SEROUT.pio.h"
 #ifdef FEATURE_A2_AUDIO
 #include <hardware/adc.h>
-#endif
-#ifdef FEATURE_A2_AUDIO_PIO
-#include "a2c_SND.pio.h"
 #endif
 
 #include "config/config.h"
@@ -47,7 +44,7 @@ SOFTWARE.
 #include "dvi/a2dvi.h"
 
 
-#define NO_NTSC_LUT     1    //  If we need extra memory for testing
+// #define NO_NTSC_LUT     1    //  If we need extra memory for testing
 
 #include "hgrdecode_LUT.h"
 
@@ -190,6 +187,8 @@ bool __time_critical_func(repeating_timer_callback)(__unused struct repeating_ti
 //  Reboot the machine
 bool s_needs_reboot = false;
 bool s_save_required = false;
+
+static void toggle_menu_screen();
 
 void DELAYED_COPY_CODE(software_reset)()
 {
@@ -373,7 +372,7 @@ static bool DELAYED_COPY_CODE(video_command)(char * command_name, int index, boo
     return result;
 }
 
-//  Save / Exit / Load defaults
+//  Save / Load defaults
 static bool DELAYED_COPY_CODE(config_command)(char * command_name, int index, bool update, bool selected)
 {
     bool result = false;
@@ -407,6 +406,8 @@ static bool DELAYED_COPY_CODE(config_command)(char * command_name, int index, bo
         }
         else if (index == 2)
         {
+            toggle_menu_screen();
+            /*
             if (IS_IFLAG(IFLAGS_DEBUG_LINES))               //  Toggle debug lines
             {
                 SET_IFLAG(0, IFLAGS_DEBUG_LINES);
@@ -415,16 +416,79 @@ static bool DELAYED_COPY_CODE(config_command)(char * command_name, int index, bo
             {
                 SET_IFLAG(1, IFLAGS_DEBUG_LINES);
             }
+                */
         }
     }
     else
     {
+        /*
         if (index == 2)
             result = IS_IFLAG(IFLAGS_DEBUG_LINES);
+        */
     }
 
     return result;
 }
+
+//  Debug Off / On
+static bool DELAYED_COPY_CODE(debug_command)(char * command_name, int index, bool update, bool selected)
+{
+    bool result = false;
+
+    if (update == true)
+    {
+        if (index == 0)
+            SET_IFLAG(0, IFLAGS_DEBUG_LINES);                   //  Off
+        if (index == 1)            
+            SET_IFLAG(1, IFLAGS_DEBUG_LINES);                   //  On
+    }
+    else
+    {
+        if (index == 0)
+            result = (IS_IFLAG(IFLAGS_DEBUG_LINES) == 0);       //  Off
+        if (index == 1)
+            result = (IS_IFLAG(IFLAGS_DEBUG_LINES) != 0);       //  On
+    }
+
+    return result;
+}
+
+#ifdef FEATURE_A2_AUDIO
+//  Sound Off / On
+static bool DELAYED_COPY_CODE(audio_command)(char * command_name, int index, bool update, bool selected)
+{
+    bool result = false;
+
+    if (update == true)
+    {
+        if (index == 0)
+        {
+            //  Off
+            a2dvi_audio_enable(false);
+        }
+        else if (index == 1)
+        {
+            //  On
+            a2dvi_audio_enable(true);
+        }
+    }
+    else
+    {
+        if (index == 0)
+        {
+            //  Off
+            result = (a2dvi_audio_enabled() == false);
+        }
+        else if (index == 1)
+        {
+            //  On
+            result = (a2dvi_audio_enabled() == true);
+        }
+    }
+
+    return result;
+}
+#endif
 
 //  Save / Exit / Load defaults
 static bool DELAYED_COPY_CODE(exit_command)(char * command_name, int index, bool update, bool selected)
@@ -492,12 +556,29 @@ struct menu_commands DELAYED_COPY_DATA(a2c_menu_items_main)[] =
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
     { "VIDEO:", { {"720X480", video_command }, {"640X480", video_command }, {"", NULL } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
-    { "SET:", { {"SAVE", config_command }, {"DEFAULT", config_command }, {"DEBUG", config_command } } },
+    { "SET:", { {"SAVE", config_command }, {"DEFAULT", config_command }, {"MORE", config_command } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
     { "EXIT", { {"", exit_command }, {"", NULL }, {"", NULL } } }
 };
 
 uint32_t a2c_menu_items_main_size = sizeof(a2c_menu_items_main) / sizeof(a2c_menu_items_main[0]);
+
+struct menu_commands DELAYED_COPY_DATA(a2c_menu_items_aux)[] = 
+{
+    { "VIDEO:", { {"576x384", NULL }, {"683x384", NULL }, {"", NULL } } },
+    { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
+#ifdef FEATURE_A2_AUDIO
+    { "SOUND:", { {"OFF", audio_command }, {"ON", audio_command }, {"", NULL } } },
+    { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
+#endif
+    { "DEBUG:", { {"OFF", debug_command }, {"ON", debug_command }, {"", NULL } } },
+    { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
+    { "SET:", { {"SAVE", config_command }, {"DEFAULT", config_command }, {"BACK", config_command } } },
+    { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
+    { "EXIT", { {"", exit_command }, {"", NULL }, {"", NULL } } }
+};
+
+uint32_t a2c_menu_items_aux_size = sizeof(a2c_menu_items_aux) / sizeof(a2c_menu_items_aux[0]);
 
 struct menu_commands* s_current_menu_screen = a2c_menu_items_main;
 uint32_t s_current_menu_screen_size = sizeof(a2c_menu_items_main) / sizeof(a2c_menu_items_main[0]);
@@ -555,15 +636,15 @@ static void DELAYED_COPY_CODE(init_menu_screen)(void)
 
 static void DELAYED_COPY_CODE(draw_menu_screen)(void)
 {
-    for (int i = 0; i < sizeof(a2c_menu_items_main) / sizeof(a2c_menu_items_main[0]); i++) 
+    for (int i = 0; i < s_current_menu_screen_size; i++) 
     {
         if ((s_menu_cursor_X == 0) && (s_menu_cursor_Y == i))
         {
-            printXY(s_menu_header_left, s_menu_line_start + i, a2c_menu_items_main[i].command_header, PRINTMODE_FLASH);
+            printXY(s_menu_header_left, s_menu_line_start + i, s_current_menu_screen[i].command_header, PRINTMODE_FLASH);
         }
         else
         {
-            printXY(s_menu_header_left, s_menu_line_start + i, a2c_menu_items_main[i].command_header, PRINTMODE_NORMAL);
+            printXY(s_menu_header_left, s_menu_line_start + i, s_current_menu_screen[i].command_header, PRINTMODE_NORMAL);
         }
 
         for (int j = 0; j < 3; j++)
@@ -571,8 +652,8 @@ static void DELAYED_COPY_CODE(draw_menu_screen)(void)
             TPrintMode printMode = PRINTMODE_NORMAL;
             bool selected = false;
 
-            if (a2c_menu_items_main[i].commands[j].command != NULL)
-                selected = (*a2c_menu_items_main[i].commands[j].command)(a2c_menu_items_main[i].commands[j].command_name, j, false, false);
+            if (s_current_menu_screen[i].commands[j].command != NULL)
+                selected = (*s_current_menu_screen[i].commands[j].command)(s_current_menu_screen[i].commands[j].command_name, j, false, false);
             
             if (selected)
                 printMode = PRINTMODE_INVERSE;
@@ -580,7 +661,7 @@ static void DELAYED_COPY_CODE(draw_menu_screen)(void)
             if ((s_menu_cursor_Y == i) && (s_menu_cursor_X == (j+1)))
                 printMode = PRINTMODE_FLASH;
 
-            printXY(s_menu_header_left + s_menu_column_left[j], s_menu_line_start + i, a2c_menu_items_main[i].commands[j].command_name, printMode);
+            printXY(s_menu_header_left + s_menu_column_left[j], s_menu_line_start + i, s_current_menu_screen[i].commands[j].command_name, printMode);
         }
     }
 }
@@ -598,11 +679,11 @@ static void DELAYED_COPY_CODE(menu_short_press)(void)
     {
         s_menu_cursor_Y++;
 
-        while (a2c_menu_items_main[s_menu_cursor_Y].commands[0].command == NULL)
+        while (s_current_menu_screen[s_menu_cursor_Y].commands[0].command == NULL)
         {
             s_menu_cursor_Y = s_menu_cursor_Y + 1;
 
-            if (s_menu_cursor_Y >= sizeof(a2c_menu_items_main) / sizeof(a2c_menu_items_main[0]))
+            if (s_menu_cursor_Y >= s_current_menu_screen_size)
             {
                 s_menu_cursor_Y = 0;
                 break;
@@ -613,7 +694,7 @@ static void DELAYED_COPY_CODE(menu_short_press)(void)
     {
         s_menu_cursor_X++;
 
-        while (a2c_menu_items_main[s_menu_cursor_Y].commands[s_menu_cursor_X - 1].command == NULL)
+        while (s_current_menu_screen[s_menu_cursor_Y].commands[s_menu_cursor_X - 1].command == NULL)
         {
             s_menu_cursor_X = s_menu_cursor_X + 1;
 
@@ -627,7 +708,7 @@ static void DELAYED_COPY_CODE(menu_short_press)(void)
 
     //  Bounds checks
     s_menu_cursor_X = s_menu_cursor_X % 4;
-    s_menu_cursor_Y = s_menu_cursor_Y % (sizeof(a2c_menu_items_main) / sizeof(a2c_menu_items_main[0]));
+    s_menu_cursor_Y = s_menu_cursor_Y % (s_current_menu_screen_size);
 }
 
 static void DELAYED_COPY_CODE(menu_long_press)(void)
@@ -637,9 +718,9 @@ static void DELAYED_COPY_CODE(menu_long_press)(void)
         if (s_menu_cursor_X == 0)
         {
             //  Are we on a header command (EXIT), these have no text in the first command but do have a command
-            if ( (a2c_menu_items_main[s_menu_cursor_Y].commands[0].command != NULL) && (a2c_menu_items_main[s_menu_cursor_Y].commands[0].command_name[0] == 0) )
+            if ( (s_current_menu_screen[s_menu_cursor_Y].commands[0].command != NULL) && (s_current_menu_screen[s_menu_cursor_Y].commands[0].command_name[0] == 0) )
             {
-                (*a2c_menu_items_main[s_menu_cursor_Y].commands[0].command)(a2c_menu_items_main[s_menu_cursor_Y].commands[0].command_name, 0, true, true);
+                (*s_current_menu_screen[s_menu_cursor_Y].commands[0].command)(s_current_menu_screen[s_menu_cursor_Y].commands[0].command_name, 0, true, true);
             }
             else
             {
@@ -659,9 +740,9 @@ static void DELAYED_COPY_CODE(menu_long_press)(void)
         else
         {
             //  Execute a setting
-            if (a2c_menu_items_main[s_menu_cursor_Y].commands[s_menu_cursor_X - 1].command != NULL)
+            if (s_current_menu_screen[s_menu_cursor_Y].commands[s_menu_cursor_X - 1].command != NULL)
             {
-                (*a2c_menu_items_main[s_menu_cursor_Y].commands[s_menu_cursor_X - 1].command)(a2c_menu_items_main[s_menu_cursor_Y].commands[s_menu_cursor_X - 1].command_name, (s_menu_cursor_X - 1), true, true);
+                (*s_current_menu_screen[s_menu_cursor_Y].commands[s_menu_cursor_X - 1].command)(s_current_menu_screen[s_menu_cursor_Y].commands[s_menu_cursor_X - 1].command_name, (s_menu_cursor_X - 1), true, true);
             }
 
             // And return to the header
@@ -670,6 +751,25 @@ static void DELAYED_COPY_CODE(menu_long_press)(void)
         }
     }
 }
+
+static void DELAYED_COPY_CODE(toggle_menu_screen)(void)
+{
+    if (s_current_menu_screen == a2c_menu_items_main)
+    {
+        s_current_menu_screen = a2c_menu_items_aux;
+        s_current_menu_screen_size = a2c_menu_items_aux_size;
+    }
+    else
+    {
+        s_current_menu_screen = a2c_menu_items_main;
+        s_current_menu_screen_size = a2c_menu_items_main_size;
+    }
+
+    init_menu_screen();
+
+    show_menu();
+}
+
 
 int s_menu_cycle_count = 0;     //  Keep track of what display mode we are on
 
@@ -762,6 +862,11 @@ void DELAYED_COPY_CODE(process_button)()
             {
                 //  Show the menu screen on a first press
                 s_show_menu_screen = true;
+
+                //  Reset to the main menu
+                s_current_menu_screen = a2c_menu_items_main;
+                s_current_menu_screen_size = a2c_menu_items_main_size;
+
                 show_menu();
             }
 
@@ -1352,13 +1457,7 @@ void __time_critical_func(a2c_init)()
     // Load the a2c_input program, and configure a free state machine to run the program.
     s_pio = pio0;
     int a2c_offset = pio_add_program(s_pio, &a2c_input_program);
-#ifdef FEATURE_A2_AUDIO_PIO
-    uint snd_offset = pio_add_program(s_pio, &a2c_snd_input_program);
-#endif
     s_a2c_sm = pio_claim_unused_sm(s_pio, true);
-#ifdef FEATURE_A2_AUDIO_PIO
-    s_a2c_snd_sm = pio_claim_unused_sm(s_pio, true);
-#endif
 
     //  Setup a repeating timer to keep an eye on WNDW an see if it has stopped
     add_repeating_timer_ms(500, repeating_timer_callback, NULL, &s_repeating_timer);
@@ -1375,76 +1474,11 @@ void __time_critical_func(a2c_init)()
 
     //  Start the PIO program
     a2c_input_program_init(s_pio, s_a2c_sm, a2c_offset, PIO_INPUT_PIN_BASE);
-#ifdef FEATURE_A2_AUDIO_PIO
-    a2c_snd_input_program_init(s_pio, s_a2c_snd_sm, snd_offset, PIO_SND_INPUT_PIN_BASE);
-#endif
 }
 
 #ifdef FEATURE_A2_AUDIO
 // Audio Related
-
 static uint s_sample_count = 0;
-
-#ifdef FEATURE_A2_AUDIO_PIO
-/*
-    PIN_SND_PIO is read at 32x 44100Hz (1.4112 MHz) as a 1 bit input by PIO, 32-bits at a time from the FIFO.  These 32 bits are considered sub samples
-*/
-
-int16_t s_last_sample = 0;
-
-
-//  Return a signed sample value
-int16_t square_process_sound_sub_samples(uint32_t sub_sample_data)
-{
-    if (sub_sample_data == 0)
-        s_last_sample = -2000;
-    else
-        s_last_sample = 2000;
-
-    return s_last_sample;
-}
-
-bool __time_critical_func(add_sound_sample_PIO)(uint32_t snd_data) 
-{
-    if (dvi0.audio_ring.buffer == NULL)
-        return false;
-
-    int size = get_write_size(&dvi0.audio_ring, false);
-    if (size > 0)
-    {
-        audio_sample_t *audio_ptr = get_write_pointer(&dvi0.audio_ring);
-        if (audio_ptr != NULL)
-        {
-            audio_sample_t sample;
-
-            sample.channels[0] = square_process_sound_sub_samples(snd_data);
-
-            sample.channels[1] = sample.channels[0];
-
-            s_debug_value_1 = (uint32_t)audio_ptr;
-            
-            *audio_ptr = sample;
-            s_sample_count++;
-
-            increase_write_pointer(&dvi0.audio_ring, 1);
-        }
-        else
-        {
-            s_debug_value_2++;
-            __mem_fence_release();
-        }
-    }
-    else
-    {
-        s_debug_value_2++;
-        __mem_fence_release();
-    }
-
-    return true;
-}
-
-#endif
-
 uint32_t s_snd_high = 0;
 uint32_t s_snd_low = 0;
 uint32_t s_snd_sum = 0;
@@ -1544,15 +1578,6 @@ uint32_t __time_critical_func(pio_get_multiple)(bool block)
             s_a2c_data = pio_sm_get(s_pio, s_a2c_sm);
             result |= A2C_DATA_RX;
         }
-
-#ifdef FEATURE_A2_AUDIO_PIO
-        if (pio_sm_is_rx_fifo_empty(s_pio, s_a2c_snd_sm) == false)
-        {
-            s_a2c_snd_data = pio_sm_get(s_pio, s_a2c_snd_sm);
-            s_a2c_snd_data_count++;
-            result |= A2C_SND_RX;
-        }
-#endif
 
 #ifdef FEATURE_A2_AUDIO
         if (adc_fifo_is_empty() == false)

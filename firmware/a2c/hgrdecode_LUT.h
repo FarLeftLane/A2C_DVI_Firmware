@@ -24,6 +24,9 @@ SOFTWARE.
 
 #pragma once
 
+#define APPLE_DATA_SECTION(n) __attribute__((section(".appledata."))) n
+
+
     // compress_LUT_Clamp NUM_TAPS: 8, NUM_TAPS_COMPRESS: 3, switchToMSB dump_hgr_LUT_compress_Sharp phaseShift: 1
     // hires hgrdecode8to3_LUT color pattern:
     uint32_t DELAYED_COPY_DATA(tmds_hgrdecode8to3_LUT_color_patterns_red)[512] = {

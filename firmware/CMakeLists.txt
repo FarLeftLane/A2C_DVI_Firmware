@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.13)
 
 # firmware version
-set(FW_VERSION "1.7.6")
+set(FW_VERSION "1.7.7")
 message(STATUS "Building firmware version ${FW_VERSION}")
 
 option(FEATURE_PICO2 "Build project for PICO2 (RP2350) instead of original PICO (RP2040)" OFF)
@@ -22,7 +22,11 @@ if (FEATURE_PICO2)
     set(FAMILY rp2350)
     set(PICO_PLATFORM rp2350)
     set(FW_TYPE "_PICO2")
+if (FEATURE_A2C)
+    set(A2DVI_LINK_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/scripts/copy_to_ram_custom_rp2350_a2c.ld)
+else()
     set(A2DVI_LINK_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/scripts/copy_to_ram_custom_rp2350.ld)
+endif()
     message(STATUS "Building for PICO2 (RP2350)...")
 else()
     set(FAMILY rp2040)
@@ -33,7 +37,11 @@ else()
 endif()
 
 if (FEATURE_A2C)
-set(BINARY_NAME "A2C_DVI_v${FW_VERSION}${FW_TYPE}")
+if (FEATURE_A2_AUDIO)
+set(BINARY_NAME "A2C_DVI_S_v${FW_VERSION}${FW_TYPE}")
+else()
+set(BINARY_NAME "A2DVI_v${FW_VERSION}${FW_TYPE}")
+endif()
 else()
 set(BINARY_NAME "A2DVI_v${FW_VERSION}${FW_TYPE}")
 endif()
@@ -267,7 +275,7 @@ add_executable(${BINARY_NAME}
 endif()
 
 pico_set_program_name(${BINARY_NAME} "A2C_DVI")
-pico_set_program_version(${BINARY_NAME} "1.7.1")
+pico_set_program_version(${BINARY_NAME} "1.7.7")
 
 # Generate PIO header
 # pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_LIST_DIR}/blink.pio)
@@ -275,9 +283,6 @@ pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/applebus/abu
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/libdvi/dvi_serialiser.pio)
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/../libraries/libdvi/tmds_encode_1bpp.pio)
 pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/a2c/a2c_SEROUT.pio)
-if (FEATURE_A2_AUDIO)
-pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/a2c/a2c_SND.pio)
-endif()
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(${BINARY_NAME} 0)

@@ -125,6 +125,8 @@ extern volatile uint8_t color_mode;
     #define DELAYED_COPY_DATA(n) n
 #endif
 
+extern          bool cfg_audio_enabled;
+
 extern void set_machine         (compat_t machine);
 extern void config_load         (void);
 extern void config_load_defaults(void);
