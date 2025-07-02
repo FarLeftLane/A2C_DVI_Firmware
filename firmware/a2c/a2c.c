@@ -407,24 +407,7 @@ static bool DELAYED_COPY_CODE(config_command)(char * command_name, int index, bo
         else if (index == 2)
         {
             toggle_menu_screen();
-            /*
-            if (IS_IFLAG(IFLAGS_DEBUG_LINES))               //  Toggle debug lines
-            {
-                SET_IFLAG(0, IFLAGS_DEBUG_LINES);
-            }
-            else
-            {
-                SET_IFLAG(1, IFLAGS_DEBUG_LINES);
-            }
-                */
         }
-    }
-    else
-    {
-        /*
-        if (index == 2)
-            result = IS_IFLAG(IFLAGS_DEBUG_LINES);
-        */
     }
 
     return result;
