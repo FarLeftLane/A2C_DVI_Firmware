@@ -445,28 +445,16 @@ static bool DELAYED_COPY_CODE(audio_command)(char * command_name, int index, boo
     if (update == true)
     {
         if (index == 0)
-        {
-            //  Off
-            a2dvi_audio_enable(false);
-        }
-        else if (index == 1)
-        {
-            //  On
-            a2dvi_audio_enable(true);
-        }
+            a2dvi_audio_enable(false);                      //  Off
+        if (index == 1)
+            a2dvi_audio_enable(true);                       //  On
     }
     else
     {
-        if (index == 0)
-        {
-            //  Off
-            result = (a2dvi_audio_enabled() == false);
-        }
-        else if (index == 1)
-        {
-            //  On
-            result = (a2dvi_audio_enabled() == true);
-        }
+        if (index == 0)            
+            result = (a2dvi_audio_enabled() == false);      //  Off
+        if (index == 1)            
+            result = (a2dvi_audio_enabled() == true);       //  On
     }
 
     return result;
@@ -949,12 +937,12 @@ void DELAYED_COPY_CODE(update_a2c_debug_monitor)(void)
         int2str(getFreeHeap(), s_temp_line_buffer, 6);
         copy_str(&line1[7+4+1+7+4+1+6], s_temp_line_buffer);  
 
-        copy_str(&line2[0], "Frame: ");
+        copy_str(&line2[0], "FRAME: ");
         int2str(frame_counter, s_temp_line_buffer, 8);
         copy_str(&line2[0+8], s_temp_line_buffer);
 
 #ifdef FEATURE_A2_AUDIO
-        copy_str(&line2[7+4+1+7+4+1], "Snd: ");
+        copy_str(&line2[7+4+1+7+4+1], "SND: ");
         float time_f = s_total_PIO_time / 1000000.0;
         float snd_rate = 110.0;
         if (time_f != 0.0)
@@ -1376,6 +1364,9 @@ void DELAYED_COPY_CODE(render_a2c)()
     }
 }
 
+#ifdef FEATURE_A2_AUDIO
+bool s_adc_initalized = false;
+#endif
 
 void __time_critical_func(a2c_init)()
 {
@@ -1433,7 +1424,8 @@ void __time_critical_func(a2c_init)()
     adc_irq_set_enabled(false);                         //  No IRQ
     adc_set_clkdiv(135.055406);                         //  48MHz / 44.1KHz / 1088.435374,  1087.40 gives the best, 8x over sampling (352800 is 135.055406)
     adc_fifo_setup(true, false, 0, false, false);       //  enable = true, DMA = false, 0 dma, no errors, no byte shift
-    adc_run(true);                                      //  enable free running mode
+
+    s_adc_initalized = true;
 #endif
 
     // PIO setup
@@ -1461,8 +1453,18 @@ void __time_critical_func(a2c_init)()
 
 #ifdef FEATURE_A2_AUDIO
 // Audio Related
+
+void __time_critical_func(a2c_audio_enable)(bool enable)
+{
+    if (s_adc_initalized)
+    {
+        adc_fifo_drain();
+        adc_run(enable);
+    }
+}
+
 static uint s_sample_count = 0;
-uint32_t s_snd_high = 0;
+uint32_t s_snd_high = 0;                //  For debugging noise
 uint32_t s_snd_low = 0;
 uint32_t s_snd_sum = 0;
 uint32_t s_sub_sample_count = 0;
@@ -1470,7 +1472,7 @@ int32_t s_sub_sample_value = 0;
 
 
 //  Return a signed sample value
-int16_t process_sound_sub_samples_eight_x(uint32_t sub_sample_data)
+int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sample_data)
 {    
     int16_t sample = ((int16_t)sub_sample_data) - 2000;                   //  samples seem to be from 0-2048 (272 - 1712)
     

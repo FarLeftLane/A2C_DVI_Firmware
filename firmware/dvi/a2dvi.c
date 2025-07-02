@@ -34,6 +34,9 @@ SOFTWARE.
 #include "util/dmacopy.h"
 #include "config/config.h"
 #include "debug/debug.h"
+#ifdef FEATURE_A2C
+#include "a2c/a2c.h"
+#endif
 
 #define DVI_SERIAL_CONFIG pico_a2dvi_cfg
 
@@ -87,30 +90,25 @@ void DELAYED_COPY_CODE(a2dvi_dvi_enable)(uint32_t video_mode)
 
     // Audio Init
 #ifdef FEATURE_A2_AUDIO
-    bool enable_sound = cfg_audio_enabled;                          //  Check the saved config for enable state
-
     dvi_audio_sample_buffer_set(&dvi0, audio_buffer, AUDIO_BUFFER_SIZE);
     switch (video_mode)
     {
         case Dvi640x480:
             dvi_set_audio_freq(&dvi0, 44100, 28000, 6272);          //  640x480 = 25.2MHz = 28000/6272
-            enable_sound = true;
             break;
 
         case Dvi720x480:
             dvi_set_audio_freq(&dvi0, 44100, 30000, 6272);          //  720x480 = 27MHz = 30000/6272 
-            enable_sound = true;
             break;
-
+        
         default:
-            enable_sound = false;
+            cfg_audio_enabled = false;                              //  We don't knwo the right rates
             break;
     }
 
-    if (cfg_audio_enabled)
-        dvi0.audio_enabled = enable_sound;                          //  We want to eable sound, but the video mode might not allow that
-
     dvi_enable_data_island(&dvi0);
+
+    a2dvi_audio_enable(cfg_audio_enabled);
 #endif
 
     dvi_register_irqs_this_core(&dvi0, DMA_IRQ_0);
@@ -155,6 +153,9 @@ void DELAYED_COPY_CODE(a2dvi_audio_enable)(bool enable)
 {
     cfg_audio_enabled = enable;
     dvi_audio_enable(&dvi0, enable);
+#ifdef FEATURE_A2C
+    a2c_audio_enable(enable);
+#endif
 }
 
 bool DELAYED_COPY_CODE(a2dvi_audio_enabled)(void)

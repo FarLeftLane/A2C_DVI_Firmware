@@ -26,4 +26,5 @@ SOFTWARE.
 
 // #include "abus_pin_config.h"
 
-void a2c_loop      (void);
+void a2c_loop(void);
+void a2c_audio_enable(bool enable);
