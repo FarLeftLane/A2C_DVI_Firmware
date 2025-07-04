@@ -1547,9 +1547,6 @@ void __time_critical_func(a2c_loop)()
 
     //  Turn on debug lines
     // SET_IFLAG(1, IFLAGS_DEBUG_LINES);
-#ifdef FEATURE_A2_AUDIO
-    a2dvi_audio_enable(true);                       //  Turn on sound for debugging
-#endif 
 
     int x = 0;      //  These are the a2c "screen" indexes
     int y = 0;
