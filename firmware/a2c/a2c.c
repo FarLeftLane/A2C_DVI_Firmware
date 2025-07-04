@@ -1142,7 +1142,7 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
         {
             // Load in the first 32 dots
             uint32_t dots = s_screen_buffer[line][i];
-            uint32_t next_dots = (i < 17) ? s_screen_buffer[line][i+1] : 0;
+            uint32_t next_dots = s_screen_buffer[line][i+1];
 
             // Consume 32 dots, two at a time
             for(uint j = 0; j < 16; j++)
@@ -1188,7 +1188,7 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
         {
             // Load in the first 32 dots
             uint32_t dots = s_screen_buffer[line][i];
-            uint32_t next_dots = (i < 17) ? s_screen_buffer[line][i+1] : 0;
+            uint32_t next_dots = s_screen_buffer[line][i+1];
             
             // Consume 32 dots, two at a time
             for(uint j = 0; j < 16; j++)
@@ -1228,7 +1228,6 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
         {
             // Load in the first 32 dots
             uint32_t dots = s_screen_buffer[line][i];
-            // uint32_t next_dots = (i < 17) ? s_screen_buffer[line][i+1] : 0;
             uint32_t next_dots = s_screen_buffer[line][i+1];
 
             // Consume 32 dots, two at a time, we run over by 2 pixels, but doing the tests are too slow and video breaks up at 640x480
