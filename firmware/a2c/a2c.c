@@ -85,7 +85,7 @@ static uint32_t s_a2c_snd_data_count = 0;
 #define A2C_DATA_RX 0x00000001
 #define A2C_SND_RX 0x00000002
 
-uint32_t s_screen_buffer[192][18];                  //  Our buffer of the A2C screen, we don't use the A2 memory
+uint32_t s_screen_buffer[192][19];                  //  Our buffer of the A2C screen, we don't use the A2 memory
 bool s_screen_GR_buffer[192];                       //  See table below
 bool s_screen_TEXT_buffer[192];                     //  See table below
                                                     //  TEXT and GR Pins
@@ -1196,7 +1196,7 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
                 if (dot_count < (32 * 18))      //  buffer is 18 32-bit dots
                 {
                     //  Render DHGR, this inner loop is very timing dependant, too slow and hdmi breaks up
-                    uint dot_pattern = (oddness << 2) | ((dots >> 22) & 0x3ff);                                 //  Total of 11 bits
+                    uint dot_pattern = (oddness) | ((dots >> 22) & 0x3ff);                                 //  Total of 11 bits
                     
                     *(tmdsbuf_red++)   = tmds_hgrdecode_NTSC_8to4_LUT_color_patterns_red[dot_pattern];
                     *(tmdsbuf_green++) = tmds_hgrdecode_NTSC_8to4_LUT_color_patterns_green[dot_pattern];
@@ -1204,7 +1204,7 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
                     
                     dots <<= 2;
                     dot_count = dot_count + 2;
-                    oddness ^= 0x100;
+                    oddness ^= 0x400;
                 }
 
                 //  Consume 16 more dots
@@ -1218,31 +1218,22 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
     {
         //  We are rendering using a 9 bit (NUM_CAP 8 to 3, Clamped) NTSC style color LUT
         uint oddness = 0;
-        uint dot_count = 0;
 
         //  Due to the NTSC encoding, we shift the color part of the screen to the right to align with the B&W text
-        //  This is a timing bug.  I can't seem to do this fix in 640 mode without the video breaking up
-        //  I think reformating the LUTs might help
-        
-        if (cfg_video_mode == Dvi720x480)
-        {
-            dot_count = 2;
-            
-            *(tmdsbuf_red++)   = TMDS_SYMBOL_0_0;
-            *(tmdsbuf_green++) = TMDS_SYMBOL_0_0;
-            *(tmdsbuf_blue++)  = TMDS_SYMBOL_0_0;
-        }
+        *(tmdsbuf_red++)   = TMDS_SYMBOL_0_0;
+        *(tmdsbuf_green++) = TMDS_SYMBOL_0_0;
+        *(tmdsbuf_blue++)  = TMDS_SYMBOL_0_0;
 
         for(uint i = 0; i < 18; i++)
         {
             // Load in the first 32 dots
             uint32_t dots = s_screen_buffer[line][i];
-            uint32_t next_dots = (i < 17) ? s_screen_buffer[line][i+1] : 0;
+            // uint32_t next_dots = (i < 17) ? s_screen_buffer[line][i+1] : 0;
+            uint32_t next_dots = s_screen_buffer[line][i+1];
 
-            // Consume 32 dots, two at a time
+            // Consume 32 dots, two at a time, we run over by 2 pixels, but doing the tests are too slow and video breaks up at 640x480
             for(uint j = 0; j < 16; j++)
             {
-                if (dot_count < (32 * 18))      //  buffer is 18 32-bit dots
                 {
                     //  Render DHGR, this inner loop is very timing dependant, too slow and hdmi breaks up
                     uint dot_pattern = oddness | ((dots >> 24) & 0xff);                                 //  Total of 9 bits
@@ -1252,7 +1243,6 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
                     *(tmdsbuf_blue++)  = tmds_hgrdecode8to3_LUT_color_patterns_blue[dot_pattern];
                     
                     dots <<= 2;
-                    dot_count = dot_count + 2;
                     oddness ^= 0x100;
                 }
 
@@ -1370,6 +1360,11 @@ bool s_adc_initalized = false;
 
 void __time_critical_func(a2c_init)()
 {
+    //  Clear the screen
+    for (int x = 0; x < 19; x++)
+        for (int y = 0; y < 192; y++)
+            s_screen_buffer[y][x] = 0;
+    
 #ifdef FEATURE_A2_AUDIO
     adc_init();
 #endif
@@ -1469,6 +1464,27 @@ int32_t s_sub_sample_value = 0;
 int16_t s_snd_samples[4];
 uint32_t s_snd_samples_index = 0;
 
+#if 1
+int16_t s_tone_sample = -2000;
+
+//  Return a signed sample value
+int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sample_data)
+{    
+    s_sub_sample_count++;
+
+    if (s_sub_sample_count % 700 == 0)
+    {
+        if (s_tone_sample == -2000)
+            s_tone_sample = 2000;
+        else
+            s_tone_sample = -2000;
+    }
+
+    return s_tone_sample;
+}
+
+#else
+
 //  Return a signed sample value
 int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sample_data)
 {    
@@ -1485,6 +1501,8 @@ int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sam
 
     return sample;
 }
+
+#endif
 
 void __time_critical_func(add_sound_sample)(uint32_t snd_data) 
 {
