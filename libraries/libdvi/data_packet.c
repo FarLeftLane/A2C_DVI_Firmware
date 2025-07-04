@@ -226,6 +226,47 @@ void __not_in_flash_func(set_null_data_packet)(data_packet_t *data_packet) {
     memset(data_packet, 0, sizeof(data_packet_t));
 }
 
+int  __not_in_flash_func(set_audio_samples)(data_packet_t *data_packet, const int16_t* samples, int n, int frameCt) {
+    const int layout = 0;
+    const int samplePresent = (1 << n) - 1;
+    const int B = frameCt < 4 ? 1 << frameCt : 0;
+    data_packet->header[0] = 2;
+    data_packet->header[1] = (layout << 4) | samplePresent;
+    data_packet->header[2] = B << 4;
+    compute_header_parity(data_packet);
+
+    for (int i = 0; i < n; ++i)
+    {
+        const int16_t l = *samples;
+        const int16_t r = *samples;
+        const uint8_t vuc = 1; // valid
+        uint8_t *d = data_packet->subpacket[i];
+        d[0] = 0;
+        d[1] = l;
+        d[2] = l >> 8;
+        d[3] = 0;
+        d[4] = r;
+        d[5] = r >> 8;
+
+        bool pl = compute8_3(d[1], d[2], vuc);
+        bool pr = compute8_3(d[4], d[5], vuc);
+        d[6] = (vuc << 0) | (pl << 3) | (vuc << 4) | (pr << 7);
+        compute_subpacket_parity(data_packet, i);
+        ++samples;
+        // channel status (is it relevant?)
+    }
+
+    if (n < 4)
+        memset(data_packet->subpacket[n], 0, sizeof(data_packet->subpacket[0]) * (4 - n));
+    // dump();
+
+    frameCt -= n;
+    if (frameCt < 0) {
+        frameCt += 192;
+    }
+    return frameCt;
+}
+
 int  __not_in_flash_func(set_audio_sample)(data_packet_t *data_packet, const audio_sample_t *p, int n, int frameCt) {
     const int layout = 0;
     const int samplePresent = (1 << n) - 1;
@@ -255,7 +296,9 @@ int  __not_in_flash_func(set_audio_sample)(data_packet_t *data_packet, const aud
         ++p;
         // channel status (is it relevant?)
     }
-    memset(data_packet->subpacket[n], 0, sizeof(data_packet->subpacket[0]) * (4 - n));
+
+    if (n < 4)
+        memset(data_packet->subpacket[n], 0, sizeof(data_packet->subpacket[0]) * (4 - n));
     // dump();
 
     frameCt -= n;

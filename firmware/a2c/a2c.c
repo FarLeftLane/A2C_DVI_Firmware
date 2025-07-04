@@ -955,7 +955,7 @@ void DELAYED_COPY_CODE(update_a2c_debug_monitor)(void)
         if (cfg_video_mode == Dvi720x480)
         {
             copy_str(&line3[0], "720x480");
-        } else if (cfg_video_mode == Dvi720x480)
+        } else if (cfg_video_mode == Dvi640x480)
         {
             copy_str(&line3[0], "640x480");
         }
@@ -1463,13 +1463,11 @@ void __time_critical_func(a2c_audio_enable)(bool enable)
     }
 }
 
-static uint s_sample_count = 0;
-uint32_t s_snd_high = 0;                //  For debugging noise
-uint32_t s_snd_low = 0;
-uint32_t s_snd_sum = 0;
 uint32_t s_sub_sample_count = 0;
 int32_t s_sub_sample_value = 0;
 
+int16_t s_snd_samples[4];
+uint32_t s_snd_samples_index = 0;
 
 //  Return a signed sample value
 int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sample_data)
@@ -1488,65 +1486,22 @@ int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sam
     return sample;
 }
 
-bool __time_critical_func(add_sound_sample)(uint32_t snd_data) 
+void __time_critical_func(add_sound_sample)(uint32_t snd_data) 
 {
-    if (dvi0.audio_ring.buffer == NULL)
-        return false;
-
     int16_t sound_sample = process_sound_sub_samples_eight_x(snd_data);
 
     if (s_sub_sample_count % 8 == 0)
     {
-        int size = get_write_size(&dvi0.audio_ring, false);
-        if (size > 0)
+        s_snd_samples[s_snd_samples_index] = sound_sample;
+
+        s_snd_samples_index++;
+
+        if (s_snd_samples_index == 4)
         {
-            audio_sample_t *audio_ptr = get_write_pointer(&dvi0.audio_ring);
-            if (audio_ptr != NULL)
-            {
-                audio_sample_t sample;
-
-                sample.channels[0] = sound_sample;
-
-                sample.channels[1] = sample.channels[0];
-
-                if (snd_data > s_snd_high)
-                    s_snd_high = snd_data;
-                
-                if (s_snd_low == 0)
-                    s_snd_low = snd_data;
-                
-                if (snd_data < s_snd_low)
-                    s_snd_low = snd_data;
-
-                *audio_ptr = sample;
-                s_sample_count++;
-                s_snd_sum = s_snd_sum + snd_data;
-
-                if ((s_sample_count % (44100 * 5)) == 0)
-                {
-                    // s_debug_value_1 = s_snd_sum / s_sample_count;
-                    // s_debug_value_2 = s_snd_high - s_snd_low;
-                    s_snd_sum = 0;
-                    s_sample_count = 0;
-
-                    s_snd_high = snd_data;
-                    s_snd_low = snd_data;
-                }
-
-                increase_write_pointer(&dvi0.audio_ring, 1);
-            }
-            else
-            {
-                __mem_fence_release();
-            }
-        }
-        else
-        {
-            __mem_fence_release();
+            a2dvi_queue_audio_samples(&s_snd_samples[0], 4);
+            s_snd_samples_index = 0;
         }
     }
-
-    return true;
 }
 
 #endif			//	FEATURE_A2_AUDIO
@@ -1592,6 +1547,9 @@ void __time_critical_func(a2c_loop)()
 
     //  Turn on debug lines
     // SET_IFLAG(1, IFLAGS_DEBUG_LINES);
+#ifdef FEATURE_A2_AUDIO
+    a2dvi_audio_enable(true);                       //  Turn on sound for debugging
+#endif 
 
     int x = 0;      //  These are the a2c "screen" indexes
     int y = 0;

@@ -188,7 +188,6 @@ add_executable(${BINARY_NAME}
     ../libraries/libdvi/tmds_table_fullres.h
     ../libraries/libdvi/util_queue_u32_inline.h
 
-    ../libraries/libdvi/audio_ring.c
     ../libraries/libdvi/audio_ring.h
     ../libraries/libdvi/data_packet.c
     ../libraries/libdvi/data_packet.h

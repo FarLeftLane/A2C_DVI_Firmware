@@ -443,6 +443,10 @@ void __dvi_func(dvi_destroy)(struct dvi_inst *inst, uint irq_num)
 }
 
 #ifdef FEATURE_A2_AUDIO
+
+#define NUMBER_OF_AUDIO_PACKETS 4
+data_packet_t s_audio_data_packets[NUMBER_OF_AUDIO_PACKETS];
+
 // DVI Data island related
 void __dvi_func(dvi_audio_init)(struct dvi_inst *inst) {
     inst->data_island_is_enabled = false;
@@ -450,11 +454,21 @@ void __dvi_func(dvi_audio_init)(struct dvi_inst *inst) {
     inst->audio_freq = 0;
     inst->samples_per_frame = 0;
     inst->samples_per_line16 = 0;
-    inst->left_audio_sample_count = 0;
-    inst->audio_sample_pos = 0;
     inst->audio_frame_count = 0;
-	inst->audio_ring.buffer = NULL;
-	inst->audio_ring.size = 0;
+
+	//	We have a queue of audio data packets so that they can be processed on the other core
+    uint spinlock3 = next_striped_spin_lock_num();
+	queue_init_with_spinlock(&inst->q_audio_packets_free, sizeof(void*), NUMBER_OF_AUDIO_PACKETS, spinlock3);
+
+	uint spinlock4 = next_striped_spin_lock_num();
+	queue_init_with_spinlock(&inst->q_audio_packets_valid, sizeof(void*), NUMBER_OF_AUDIO_PACKETS, spinlock4);
+
+	for (int i = 0; i < NUMBER_OF_AUDIO_PACKETS; i++)
+	{
+		set_null_data_packet(&s_audio_data_packets[i]);
+		void *packet = &s_audio_data_packets[i];
+		queue_add_blocking_u32(&inst->q_audio_packets_free, &packet);
+	}
 }
 
 void __dvi_func(dvi_enable_data_island)(struct dvi_inst *inst) {
@@ -488,10 +502,6 @@ void __dvi_func(dvi_update_data_island_ptr)(struct dvi_scanline_dma_list *dma_li
     }
 }
 
-void __dvi_func(dvi_audio_sample_buffer_set)(struct dvi_inst *inst, audio_sample_t *buffer, int size) {
-    audio_ring_set(&inst->audio_ring, buffer, size);
-}
-
 // video_freq: video sampling frequency = 
 // audio_freq: audio sampling frequency
 // CTS: Cycle Time Stamp  (32176 == 720x480)
@@ -517,43 +527,76 @@ void dvi_wait_for_valid_line(struct dvi_inst *inst) {
 }
 #endif
 
+//	Called on the DVI core
 bool __dvi_func(dvi_update_data_packet_data)(struct dvi_inst *inst, data_packet_t *packet) {
-    if ((inst->samples_per_frame == 0) || (inst->audio_ring.buffer == NULL)) {
+    if (inst->samples_per_frame == 0)
+	{
         return false;
     }
 
-    inst->audio_sample_pos += inst->samples_per_line16;
-    if (inst->timing_state.v_state == DVI_STATE_FRONT_PORCH) {
-        if (inst->timing_state.v_ctr == 0) {
-            if (inst->dvi_frame_count & 1) {
+    if (inst->timing_state.v_state == DVI_STATE_FRONT_PORCH) 
+	{
+        if (inst->timing_state.v_ctr == 0) 
+		{
+            if (inst->dvi_frame_count & 1) 
+			{
                 *packet = inst->avi_info_frame;
-            } else {
+            } else 
+			{
                 *packet = inst->audio_info_frame;
             }
-            inst->left_audio_sample_count = inst->samples_per_frame;
 
             return true;
-        } else if (inst->timing_state.v_ctr == 1) {
+        } 
+		else if (inst->timing_state.v_ctr == 1) 
+		{
             *packet = inst->audio_clock_regeneration;
 
             return true;
         }
     }
-    int sample_pos_16 = inst->audio_sample_pos >> 16;
-    int read_size = get_read_size(&inst->audio_ring, false);
-    int n = MAX(0, MIN(4, MIN(sample_pos_16, read_size)));
-    inst->audio_sample_pos -= n << 16;
-#if 1																//	Turn off audio samples for testing
-    if (n) {
-        audio_sample_t *audio_sample_ptr = get_read_pointer(&inst->audio_ring);
-        inst->audio_frame_count = set_audio_sample(packet, audio_sample_ptr, n, inst->audio_frame_count);
-        increase_read_pointer(&inst->audio_ring, n);
-        
-        return true;
-    }
-#endif
+
+	if (inst->audio_enabled)
+	{
+		//	Pull a packet from the queue, if there is one ready.
+		//	Each packet is 4 samples at 44100Hz
+		data_packet_t *audio_packet;
+		if (queue_try_remove_u32(&inst->q_audio_packets_valid, &audio_packet))
+		{				
+			*packet = *audio_packet;
+
+			queue_add_blocking_u32(&inst->q_audio_packets_free, &audio_packet);
+
+			return true;
+		}
+	}
 
     return false;
+}
+
+//	Called on the render core
+bool __dvi_func(dvi_queue_audio_samples)(struct dvi_inst *inst, const int16_t* samples, int count)
+{
+	bool result = false;
+
+	if (inst->audio_enabled)
+	{
+		data_packet_t *audio_packet;
+
+		if (count == 4) 
+		{
+			if (queue_try_remove_u32(&inst->q_audio_packets_free, &audio_packet))
+			{
+				inst->audio_frame_count = set_audio_samples(audio_packet, samples, count, inst->audio_frame_count);
+
+				queue_add_blocking_u32(&inst->q_audio_packets_valid, &audio_packet);
+
+				result = true;
+			}
+		}
+	}
+
+	return result;
 }
 
 void __dvi_func(dvi_update_data_packet)(struct dvi_inst *inst) {

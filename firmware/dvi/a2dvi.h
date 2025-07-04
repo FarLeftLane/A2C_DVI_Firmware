@@ -31,4 +31,5 @@ uint32_t a2dvi_scanline_errors(void);
 bool     a2dvi_started        (void);
 void     a2dvi_audio_enable   (bool enable);
 bool     a2dvi_audio_enabled  (void);
+bool     a2dvi_queue_audio_samples(const int16_t* samples, int count);
 

@@ -43,12 +43,6 @@ SOFTWARE.
 // struct dvi_inst __attribute__((section (".appledata."))) dvi0;
 struct dvi_inst dvi0;           //  Need to move this to normal RAM or there is an init race condition 
 
-#ifdef FEATURE_A2_AUDIO
-//  Audio 
-#define AUDIO_BUFFER_SIZE   256
-audio_sample_t audio_buffer[AUDIO_BUFFER_SIZE];
-#endif
-
 static void a2dvi_init(void)
 {
     // wait a bit, until the raised core VCC has settled
@@ -90,7 +84,6 @@ void DELAYED_COPY_CODE(a2dvi_dvi_enable)(uint32_t video_mode)
 
     // Audio Init
 #ifdef FEATURE_A2_AUDIO
-    dvi_audio_sample_buffer_set(&dvi0, audio_buffer, AUDIO_BUFFER_SIZE);
     switch (video_mode)
     {
         case Dvi640x480:
@@ -161,6 +154,11 @@ void DELAYED_COPY_CODE(a2dvi_audio_enable)(bool enable)
 bool DELAYED_COPY_CODE(a2dvi_audio_enabled)(void)
 {
     return dvi0.audio_enabled;
+}
+
+bool DELAYED_COPY_CODE(a2dvi_queue_audio_samples)(const int16_t* samples, int count)
+{
+    return dvi_queue_audio_samples(&dvi0, samples, count);
 }
 
 #endif  // FEATURE_A2_AUDIO
