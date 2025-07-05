@@ -1458,7 +1458,9 @@ int32_t s_sub_sample_value = 0;
 int16_t s_snd_samples[4];
 uint32_t s_snd_samples_index = 0;
 
-#if 1
+// #define A2C_TEST_TONE 1
+
+#ifdef A2C_TEST_TONE
 int16_t s_tone_sample = -2000;
 
 //  Return a signed sample value
