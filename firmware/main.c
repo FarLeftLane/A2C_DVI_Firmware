@@ -61,8 +61,10 @@ int main()
     // enable LED etc
     debug_init();
 
+#ifndef FEATURE_A2C
     // Finish copying remaining data and code from flash to RAM
     memcpy32(__ram_delayed_copy_start__, __ram_delayed_copy_source__, ((uint32_t)__ram_delayed_copy_end__) - (uint32_t) __ram_delayed_copy_start__);
+#endif
 
 #ifndef FEATURE_A2C
     // check hardware

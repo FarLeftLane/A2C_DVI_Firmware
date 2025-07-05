@@ -110,13 +110,13 @@ typedef enum {
 extern          uint8_t cfg_color_style;
 extern volatile uint8_t color_mode;
 
-#if 1
+#ifndef FEATURE_A2C
     #define DELAYED_COPY_CODE(n) __noinline __attribute__((section(".delayed_code."))) n
 #else
     #define DELAYED_COPY_CODE(n) __noinline __time_critical_func(n)
 #endif
 
-#if 1
+#ifndef FEATURE_A2C
     #define DELAYED_COPY_DATA(n) __attribute__((section(".delayed_data."))) n
     extern void* __ram_delayed_copy_source__[];
     extern void* __ram_delayed_copy_start__[];

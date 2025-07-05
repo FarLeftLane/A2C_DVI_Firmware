@@ -5,8 +5,13 @@
 extern "C" {
 #endif
 
+#ifndef FEATURE_A2C
 #define DELAYED_COPY_CODE(n) __noinline __attribute__((section(".delayed_code."))) n
 #define DELAYED_COPY_DATA(n) __attribute__((section(".delayed_data."))) n
+#else
+#define DELAYED_COPY_CODE(n) __noinline __time_critical_func(n)
+#define DELAYED_COPY_DATA(n) n
+#endif
 
 // Pull into RAM but apply unique section suffix to allow linker GC
 #define __dvi_func(x)  DELAYED_COPY_CODE(x)
