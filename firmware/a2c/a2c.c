@@ -1217,6 +1217,7 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
     {
         //  We are rendering using a 9 bit (NUM_CAP 8 to 3, Clamped) NTSC style color LUT
         uint oddness = 0;
+        uint dot_count = 2;
 
         //  Due to the NTSC encoding, we shift the color part of the screen to the right to align with the B&W text
         *(tmdsbuf_red++)   = TMDS_SYMBOL_0_0;
@@ -1232,6 +1233,7 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
             // Consume 32 dots, two at a time, we run over by 2 pixels, but doing the tests are too slow and video breaks up at 640x480
             for(uint j = 0; j < 16; j++)
             {
+                if (dot_count < (32 * 18))      //  buffer is 18 32-bit dots
                 {
                     //  Render DHGR, this inner loop is very timing dependant, too slow and hdmi breaks up
                     uint dot_pattern = oddness | ((dots >> 24) & 0xff);                                 //  Total of 9 bits
@@ -1241,6 +1243,7 @@ static void DELAYED_COPY_CODE(render_a2c_full_line)(a2c_render_mode_mode_t rende
                     *(tmdsbuf_blue++)  = tmds_hgrdecode8to3_LUT_color_patterns_blue[dot_pattern];
                     
                     dots <<= 2;
+                    dot_count = dot_count + 2;
                     oddness ^= 0x100;
                 }
 
