@@ -10,7 +10,7 @@ extern "C" {
 #define DELAYED_COPY_DATA(n) __attribute__((section(".delayed_data."))) n
 #else
 #define DELAYED_COPY_CODE(n) __noinline __time_critical_func(n)
-#define DELAYED_COPY_DATA(n) n
+#define DELAYED_COPY_DATA(n) __attribute__((section(".time_critical." "A2C")))(n)
 #endif
 
 // Pull into RAM but apply unique section suffix to allow linker GC

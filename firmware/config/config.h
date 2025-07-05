@@ -122,7 +122,7 @@ extern volatile uint8_t color_mode;
     extern void* __ram_delayed_copy_start__[];
     extern void* __ram_delayed_copy_end__[];
 #else
-    #define DELAYED_COPY_DATA(n) n
+    #define DELAYED_COPY_DATA(n) __attribute__((section(".time_critical." "A2C")))(n)
 #endif
 
 extern          bool cfg_audio_enabled;
