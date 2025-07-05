@@ -87,7 +87,6 @@ static uint32_t s_a2c_snd_data_count = 0;
 
 uint32_t s_screen_buffer[192][19];                  //  Our buffer of the A2C screen, we don't use the A2 memory
 bool s_screen_GR_buffer[192];                       //  See table below
-bool s_screen_TEXT_buffer[192];                     //  See table below
                                                     //  TEXT and GR Pins
                                                     //  Mode:   TEXT    GR      HGR     DGR     DHGR
                                                     //  TEXT:   HIGH    LOW     LOW     HIGH    HIGH
@@ -1313,7 +1312,7 @@ void DELAYED_COPY_CODE(render_a2c)()
         }
         else
         {
-            a2c_render_mode_mode_t render_mode = RM_A2DVI;      //  s_screen_TEXT_buffer[line], s_screen_GR_buffer[line],
+            a2c_render_mode_mode_t render_mode = RM_A2DVI;
                 
             if (cfg_color_style == CS_A2DVI)
                 render_mode = RM_A2DVI;
@@ -1386,10 +1385,6 @@ void __time_critical_func(a2c_init)()
     //  Setup the GR pin
     gpio_init(PIN_GR);
     gpio_set_dir(PIN_GR, GPIO_IN);
-
-    //  Setup the TEXT pin
-    gpio_init(PIN_TEXT);
-    gpio_set_dir(PIN_TEXT, GPIO_IN);
     
     //  Interrupt on each scan line     11500 per second
     gpio_init(PIN_WNDW);
@@ -1586,7 +1581,6 @@ void __time_critical_func(a2c_loop)()
                 
                 //  record the state of the GR pin to know if this is a color or B&W line
                 s_screen_GR_buffer[y] = gpio_get(PIN_GR);
-                s_screen_TEXT_buffer[y] = gpio_get(PIN_TEXT);
             }
             
             //  SEROUT is inverted from memory bits
