@@ -97,8 +97,8 @@ struct dvi_inst {
 
     int audio_frame_count;
 
-	queue_t q_audio_packets_free;
-	queue_t q_audio_packets_valid;
+	queue_t q_audio_streams_free;
+	queue_t q_audio_streams_valid;
 #endif
 };
 
@@ -149,8 +149,8 @@ void dvi_enable_data_island(struct dvi_inst *inst);
 void dvi_update_data_island_ptr(struct dvi_scanline_dma_list *dma_list, data_island_stream_t *stream);
 void dvi_audio_sample_buffer_set(struct dvi_inst *inst, audio_sample_t *buffer, int size);
 void dvi_set_audio_freq(struct dvi_inst *inst, int audio_freq, int cts, int n);
-void dvi_update_data_packet(struct dvi_inst *inst);
-void dvi_update_data_packet_null(struct dvi_inst *inst);
+void dvi_update_data_stream(struct dvi_inst *inst);
+void dvi_update_data_stream_null(struct dvi_inst *inst);
 void dvi_audio_enable(struct dvi_inst *inst, bool enable);
 bool dvi_queue_audio_samples(struct dvi_inst *inst, const int16_t* samples, int count);
 #endif

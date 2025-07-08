@@ -277,7 +277,7 @@ static void __dvi_func(dvi_dma_irq_handler)(struct dvi_inst *inst)
 	// (should be within a few cycles of one another)
 	for (int i = 0; i < N_TMDS_LANES; ++i) {
 		while (dma_debug_hw->ch[inst->dma_cfg[i].chan_data].dbg_tcr != inst->timing->h_active_pixels / DVI_SYMBOLS_PER_WORD)
-			tight_loop_contents();
+			tight_loop_contents();							//	Have not seen this condition hit  640 or 720
 	}
 
 	uint32_t *tmdsbuf;
@@ -346,9 +346,9 @@ static void __dvi_func(dvi_dma_irq_handler)(struct dvi_inst *inst)
 #ifdef FEATURE_A2_AUDIO
     if (inst->data_island_is_enabled) {
 		if (inst->audio_enabled)
-        	dvi_update_data_packet(inst);
+        	dvi_update_data_stream(inst);
 		else
-			dvi_update_data_packet_null(inst);
+			dvi_update_data_stream_null(inst);
     }
 #endif
 }
@@ -445,7 +445,14 @@ void __dvi_func(dvi_destroy)(struct dvi_inst *inst, uint irq_num)
 #ifdef FEATURE_A2_AUDIO
 
 #define NUMBER_OF_AUDIO_PACKETS 4
-data_packet_t s_audio_data_packets[NUMBER_OF_AUDIO_PACKETS];
+typedef struct data_island_streams {
+    data_island_stream_t stream_true;
+	data_island_stream_t stream_false;
+} data_island_streams_t;
+
+data_island_streams_t s_audio_data_streams[NUMBER_OF_AUDIO_PACKETS];	//	We calculate both the true and false versions of the stream on the render processor
+data_island_stream_t s_zero_stream_true;								//	We cache the two most used null streams
+data_island_stream_t s_zero_stream_false;
 
 // DVI Data island related
 void __dvi_func(dvi_audio_init)(struct dvi_inst *inst) {
@@ -456,18 +463,26 @@ void __dvi_func(dvi_audio_init)(struct dvi_inst *inst) {
     inst->samples_per_line16 = 0;
     inst->audio_frame_count = 0;
 
+	data_packet_t packet;
+	set_null_data_packet(&packet);
+    encode_data_packet(&s_zero_stream_true, &packet, true, inst->timing->h_sync_polarity);
+
+	set_null_data_packet(&packet);
+    encode_data_packet(&s_zero_stream_false, &packet, false, inst->timing->h_sync_polarity);
+
 	//	We have a queue of audio data packets so that they can be processed on the other core
     uint spinlock3 = next_striped_spin_lock_num();
-	queue_init_with_spinlock(&inst->q_audio_packets_free, sizeof(void*), NUMBER_OF_AUDIO_PACKETS, spinlock3);
+	queue_init_with_spinlock(&inst->q_audio_streams_free, sizeof(void*), NUMBER_OF_AUDIO_PACKETS, spinlock3);
 
 	uint spinlock4 = next_striped_spin_lock_num();
-	queue_init_with_spinlock(&inst->q_audio_packets_valid, sizeof(void*), NUMBER_OF_AUDIO_PACKETS, spinlock4);
+	queue_init_with_spinlock(&inst->q_audio_streams_valid, sizeof(void*), NUMBER_OF_AUDIO_PACKETS, spinlock4);
 
 	for (int i = 0; i < NUMBER_OF_AUDIO_PACKETS; i++)
 	{
-		set_null_data_packet(&s_audio_data_packets[i]);
-		void *packet = &s_audio_data_packets[i];
-		queue_add_blocking_u32(&inst->q_audio_packets_free, &packet);
+		encode_data_packet(&s_audio_data_streams[i].stream_true, &packet, true, inst->timing->h_sync_polarity);
+		encode_data_packet(&s_audio_data_streams[i].stream_false, &packet, false, inst->timing->h_sync_polarity);
+		void *stream = &s_audio_data_streams[i];
+		queue_add_blocking_u32(&inst->q_audio_streams_free, &stream);
 	}
 }
 
@@ -527,52 +542,6 @@ void dvi_wait_for_valid_line(struct dvi_inst *inst) {
 }
 #endif
 
-//	Called on the DVI core
-bool __dvi_func(dvi_update_data_packet_data)(struct dvi_inst *inst, data_packet_t *packet) {
-    if (inst->samples_per_frame == 0)
-	{
-        return false;
-    }
-
-    if (inst->timing_state.v_state == DVI_STATE_FRONT_PORCH) 
-	{
-        if (inst->timing_state.v_ctr == 0) 
-		{
-            if (inst->dvi_frame_count & 1) 
-			{
-                *packet = inst->avi_info_frame;
-            } else 
-			{
-                *packet = inst->audio_info_frame;
-            }
-
-            return true;
-        } 
-		else if (inst->timing_state.v_ctr == 1) 
-		{
-            *packet = inst->audio_clock_regeneration;
-
-            return true;
-        }
-    }
-
-	if (inst->audio_enabled)
-	{
-		//	Pull a packet from the queue, if there is one ready.
-		//	Each packet is 4 samples at 44100Hz
-		data_packet_t *audio_packet;
-		if (queue_try_remove_u32(&inst->q_audio_packets_valid, &audio_packet))
-		{				
-			*packet = *audio_packet;
-
-			queue_add_blocking_u32(&inst->q_audio_packets_free, &audio_packet);
-
-			return true;
-		}
-	}
-
-    return false;
-}
 
 //	Called on the render core
 bool __dvi_func(dvi_queue_audio_samples)(struct dvi_inst *inst, const int16_t* samples, int count)
@@ -581,15 +550,20 @@ bool __dvi_func(dvi_queue_audio_samples)(struct dvi_inst *inst, const int16_t* s
 
 	if (inst->audio_enabled)
 	{
-		data_packet_t *audio_packet;
-
 		if (count == 4) 
 		{
-			if (queue_try_remove_u32(&inst->q_audio_packets_free, &audio_packet))
-			{
-				inst->audio_frame_count = set_audio_samples(audio_packet, samples, count, inst->audio_frame_count);
+			data_packet_t packet;
+			data_island_streams_t* audio_streams;
 
-				queue_add_blocking_u32(&inst->q_audio_packets_valid, &audio_packet);
+			inst->audio_frame_count = set_audio_samples(&packet, samples, count, inst->audio_frame_count);
+
+			if (queue_try_remove_u32(&inst->q_audio_streams_free, &audio_streams))
+			{
+				//	Compute the true and false versions of the stream, h_sync_polarity is constant
+				encode_data_packet(&(audio_streams->stream_true), &packet, true, inst->timing->h_sync_polarity);
+				encode_data_packet(&(audio_streams->stream_false), &packet, false, inst->timing->h_sync_polarity);
+
+				queue_add_blocking_u32(&inst->q_audio_streams_valid, &audio_streams);
 
 				result = true;
 			}
@@ -599,20 +573,78 @@ bool __dvi_func(dvi_queue_audio_samples)(struct dvi_inst *inst, const int16_t* s
 	return result;
 }
 
-void __dvi_func(dvi_update_data_packet)(struct dvi_inst *inst) {
-    data_packet_t packet;
-    if (!dvi_update_data_packet_data(inst, &packet)) {
-        set_null_data_packet(&packet);
-    }
+//	Called on the DVI core
+void __dvi_func(dvi_update_data_stream)(struct dvi_inst *inst) {
+	data_packet_t packet;
     bool vsync = inst->timing_state.v_state == DVI_STATE_SYNC;
-    encode_data_packet(&inst->next_data_stream, &packet, inst->timing->v_sync_polarity == vsync, inst->timing->h_sync_polarity);
+	bool encode = false;
+
+    if (inst->samples_per_frame != 0)
+	{
+		//	These are all infrequent
+		if (inst->timing_state.v_state == DVI_STATE_FRONT_PORCH) 
+		{
+			if (inst->timing_state.v_ctr == 0) 
+			{
+				if (inst->dvi_frame_count & 1) 
+				{
+					packet = inst->avi_info_frame;
+					encode = true;
+				} 
+				else 
+				{
+					packet = inst->audio_info_frame;
+					encode = true;
+				}
+			} 
+			else if (inst->timing_state.v_ctr == 1) 
+			{
+				packet = inst->audio_clock_regeneration;
+				encode = true;
+			}
+
+			if (encode)
+			{
+				//	return the packet encoded, this doesn't happen often
+				encode_data_packet(&inst->next_data_stream, &packet, inst->timing->v_sync_polarity == vsync, inst->timing->h_sync_polarity);
+				return;
+			}
+			else
+			{
+				dvi_update_data_stream_null(inst);
+				return;
+			}
+		}
+		else if (inst->audio_enabled) 
+		{
+			//	Pull a stream from the queue, if there is one ready.
+			//	Each packet is 4 samples at 44100Hz
+			data_island_streams_t* audio_streams;
+			if (queue_try_remove_u32(&inst->q_audio_streams_valid, &audio_streams))
+			{
+				//	Select the right pre-encoded stream
+				if (inst->timing->v_sync_polarity == vsync)
+					inst->next_data_stream = audio_streams->stream_true;
+				else
+					inst->next_data_stream = audio_streams->stream_false;
+
+				queue_add_blocking_u32(&inst->q_audio_streams_free, &audio_streams);
+
+				return;
+			}
+		}
+	}
+	
+	//	By default, return a null stream
+	dvi_update_data_stream_null(inst);
 }
 
-void __dvi_func(dvi_update_data_packet_null)(struct dvi_inst *inst) {
-    data_packet_t packet;
-    set_null_data_packet(&packet);
-    bool vsync = inst->timing_state.v_state == DVI_STATE_SYNC;
-    encode_data_packet(&inst->next_data_stream, &packet, inst->timing->v_sync_polarity == vsync, inst->timing->h_sync_polarity);
+void __dvi_func(dvi_update_data_stream_null)(struct dvi_inst *inst) {
+	bool vsync = inst->timing_state.v_state == DVI_STATE_SYNC;
+	if (inst->timing->v_sync_polarity == vsync)	
+		inst->next_data_stream = s_zero_stream_true;
+	else
+		inst->next_data_stream = s_zero_stream_false;
 }
 
 void __dvi_func(dvi_audio_enable)(struct dvi_inst *inst, bool enable)
