@@ -458,6 +458,33 @@ static bool DELAYED_COPY_CODE(audio_command)(char * command_name, int index, boo
 
     return result;
 }
+
+bool s_test_tone = false;           //  Not saved to config
+
+static bool DELAYED_COPY_CODE(tone_command)(char * command_name, int index, bool update, bool selected)
+{
+    bool result = false;
+
+    if (a2dvi_audio_enabled())
+    {
+        if (update == true)
+        {
+            if (index == 0)
+                s_test_tone = false;                            //  Off
+            if (index == 1)
+                s_test_tone = true;                             //  On
+        }
+        else
+        {
+            if (index == 0)            
+                result = (s_test_tone == false);                //  Off
+            if (index == 1)            
+                result = (s_test_tone == true);                 //  On
+        }
+    }
+
+    return result;
+}
 #endif
 
 //  Save / Exit / Load defaults
@@ -539,6 +566,8 @@ struct menu_commands DELAYED_COPY_DATA(a2c_menu_items_aux)[] =
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
 #ifdef FEATURE_A2_AUDIO
     { "SOUND:", { {"OFF", audio_command }, {"ON", audio_command }, {"", NULL } } },
+    { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
+    { "TONE:", { {"OFF", tone_command }, {"ON", tone_command }, {"", NULL } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
 #endif
     { "DEBUG:", { {"OFF", debug_command }, {"ON", debug_command }, {"", NULL } } },
@@ -1461,13 +1490,10 @@ int32_t s_sub_sample_value = 0;
 int16_t s_snd_samples[4];
 uint32_t s_snd_samples_index = 0;
 
-// #define A2C_TEST_TONE 1
-
-#ifdef A2C_TEST_TONE
 int16_t s_tone_sample = -2000;
 
 //  Return a signed sample value
-int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sample_data)
+int16_t __time_critical_func(process_sound_sub_samples_eight_x_test_tone)(uint32_t sub_sample_data)
 {    
     s_sub_sample_count++;
 
@@ -1481,8 +1507,6 @@ int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sam
 
     return s_tone_sample;
 }
-
-#else
 
 //  Return a signed sample value
 int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sample_data)
@@ -1501,11 +1525,14 @@ int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sam
     return sample;
 }
 
-#endif
-
 void __time_critical_func(add_sound_sample)(uint32_t snd_data) 
 {
-    int16_t sound_sample = process_sound_sub_samples_eight_x(snd_data);
+    int16_t sound_sample;
+    
+    if (s_test_tone == true)
+        sound_sample = process_sound_sub_samples_eight_x_test_tone(snd_data);
+    else
+        sound_sample = process_sound_sub_samples_eight_x(snd_data);
 
     if (s_sub_sample_count % 8 == 0)
     {
