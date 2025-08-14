@@ -53,6 +53,9 @@ SOFTWARE.
 
 int main()
 {
+    //  Enable to reboot without BOOTSEL button
+    //  stdio_init_all();
+    
     // slightly rise the core voltage, preparation for overclocking
     vreg_set_voltage(VREG_VSEL);
 

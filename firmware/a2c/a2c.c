@@ -55,13 +55,12 @@ SOFTWARE.
 #define PIN_WNDW    2           //  A2C Pin 7  - A2E Pin 47 - GPIO 2
 #define PIN_TEXT    3           //  A2C Pin 1  - A2E Pin 46 - GPIO 3
 #define PIN_GR      4           //  A2C Pin 10 - A2E Pin 45 - GPIO 4
-#define PIN_SND_PIO 5           //  A2C Pin 5  - A2E Pin 44 - GPIO 5
+#define PIN_VIDD7   5           //  A2C Pin 5  - A2E Pin 44 - GPIO 5
                                 //  Ground GPIO 5 and 6 (A2E pins 44, 43) if not used
 #define PIN_BUTTON  7           //  Button     - A2E Pin 42 - GPIO 7  10k pull down, 2K pull up
 
 #define PIN_ENABLE  11              //  pull down GP11 to enable the 245 that controls D0-D7 (A2E PINs 49 - 42)
 #define PIO_INPUT_PIN_BASE 0        //  SEROUT is 0
-#define PIO_SND_INPUT_PIN_BASE 5    //  1VSND is 5 (PIN_SND_PIO)
 
 #define PIN_ADC_SND 27              //  GPIO 27 is ADC1 and used for analog sound.  GPIO26 is used in the A2DVI designs.
 
@@ -996,10 +995,11 @@ void DELAYED_COPY_CODE(update_a2c_debug_monitor)(void)
     if ((frame_counter & 0x0F) == 0)         // do not update too fast, so data remains readable
     {
         //  Display a bit of screen data
-        int2hex(&line4[0], s_screen_buffer[2][0], 8);
-        int2hex(&line4[9], s_screen_buffer[2][1], 8);
-        int2hex(&line4[18], s_screen_buffer[2][2], 8);
-        int2hex(&line4[18+9], s_screen_buffer[2][3], 8);
+        int y = 0;
+        int2hex(&line4[0], s_screen_buffer[y][0], 8);
+        int2hex(&line4[9], s_screen_buffer[y][1], 8);
+        int2hex(&line4[18], s_screen_buffer[y][2], 8);
+        int2hex(&line4[18+9], s_screen_buffer[y][3], 8);
     }
 #endif
 }
@@ -1422,9 +1422,9 @@ void __time_critical_func(a2c_init)()
     gpio_init(PIN_WNDW);
     gpio_set_dir(PIN_WNDW, GPIO_IN);
 
-    //  Setup PIN_SND_PIO as input for debugging
-    gpio_init(PIN_SND_PIO);
-    gpio_set_dir(PIN_SND_PIO, GPIO_IN);
+    //  Setup PIN_VIDD7 as input for future use
+    gpio_init(PIN_VIDD7);
+    gpio_set_dir(PIN_VIDD7, GPIO_IN);
 
     //  Pull the enable pin low so we can data throught the 245
     gpio_init(PIN_ENABLE);
