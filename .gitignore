@@ -9,3 +9,4 @@ _BUILD/localsettings.mk
 _BUILD/*.zip
 _BUILD/*.uf2
 firmware/fonts/raw
+build
