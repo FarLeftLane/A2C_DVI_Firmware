@@ -481,6 +481,13 @@ static bool DELAYED_COPY_CODE(tone_command)(char * command_name, int index, bool
                 result = (s_test_tone == true);                 //  On
         }
     }
+    else
+    {
+        if ((update == false) && (index == 0))
+        {
+            result = true;                                      //  Off
+        }
+    }
 
     return result;
 }
@@ -561,8 +568,8 @@ uint32_t a2c_menu_items_main_size = sizeof(a2c_menu_items_main) / sizeof(a2c_men
 
 struct menu_commands DELAYED_COPY_DATA(a2c_menu_items_aux)[] = 
 {
-    { "VIDEO:", { {"576x384", NULL }, {"683x384", NULL }, {"", NULL } } },
-    { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
+//    { "VIDEO:", { {"576x384", NULL }, {"683x384", NULL }, {"", NULL } } },
+//    { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
 #ifdef FEATURE_A2_AUDIO
     { "SOUND:", { {"OFF", audio_command }, {"ON", audio_command }, {"", NULL } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
