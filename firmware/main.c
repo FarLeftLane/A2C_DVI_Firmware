@@ -34,9 +34,10 @@ SOFTWARE.
 #include "menu/menu.h"
 #include "debug/debug.h"
 
-#ifdef FEATURE_A2C
 #include <stdio.h>
 #include <pico/stdlib.h>
+
+#ifdef FEATURE_A2C
 #include "a2c/a2c.h"
 #endif 
 
@@ -54,7 +55,7 @@ SOFTWARE.
 int main()
 {
     //  Enable to reboot without BOOTSEL button
-    //  stdio_init_all();
+    stdio_init_all();
     
     // slightly rise the core voltage, preparation for overclocking
     vreg_set_voltage(VREG_VSEL);

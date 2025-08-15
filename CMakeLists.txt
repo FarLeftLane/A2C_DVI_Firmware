@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 # firmware version
-set(FW_VERSION "1.7.7")
+set(FW_VERSION "1.8.0")
 message(STATUS "Building firmware version ${FW_VERSION}")
 
 option(FEATURE_PICO2 "Build project for PICO2 (RP2350) instead of original PICO (RP2040)" OFF)
@@ -277,7 +277,7 @@ add_executable(${BINARY_NAME}
 endif()
 
 pico_set_program_name(${BINARY_NAME} "A2DVI")
-pico_set_program_version(${BINARY_NAME} "1.7.7")
+pico_set_program_version(${BINARY_NAME} "${FW_VERSION}")
 
 # Generate PIO header
 # pico_generate_pio_header(${BINARY_NAME} ${CMAKE_CURRENT_LIST_DIR}/blink.pio)
