@@ -73,7 +73,7 @@ void DELAYED_COPY_CODE(a2dvi_dvi_enable)(uint32_t video_mode)
     current_video_mode = video_mode;
 
     // select timing
-    struct dvi_timing* p_dvi_timing = (video_mode == Dvi720x480) ? &dvi_timing_720x480p_60hz : &dvi_timing_640x480p_60hz;
+    struct dvi_timing* p_dvi_timing = &dvi_timing_720x480p_60hz;
 
     // configure DVI
     set_sys_clock_khz(p_dvi_timing->bit_clk_khz, true);

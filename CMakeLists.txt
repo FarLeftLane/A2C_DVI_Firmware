@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.18)
 
 # firmware version
-set(FW_VERSION "1.8.0")
+set(FW_VERSION "1.8.1a")
 message(STATUS "Building firmware version ${FW_VERSION}")
 
 option(FEATURE_PICO2 "Build project for PICO2 (RP2350) instead of original PICO (RP2040)" OFF)
 option(FEATURE_TEST  "Build test firmware instead of normal firmware" OFF)
-option(FEATURE_A2C  "Build A2C firmware instead of normal firmware" ON)
-option(FEATURE_A2_AUDIO  "Experimental Audio support for A2C" ON)
+option(FEATURE_A2C  "Build A2C firmware instead of normal A2DVI slotted firmware" OFF)
+option(FEATURE_A2_AUDIO  "Experimental Audio support" ON)
 
 set(PICO_STDIO_UART OFF)
 set(PICO_STDIO_USB  OFF)
@@ -119,7 +119,7 @@ add_executable(${BINARY_NAME}
     firmware/applebus/abus_setup.c
     firmware/applebus/buffers.c
 
-    firmware/a2c/a2c.c
+#    firmware/a2c/a2c.c
 
     firmware/dvi/a2dvi.c
     firmware/dvi/tmds.c

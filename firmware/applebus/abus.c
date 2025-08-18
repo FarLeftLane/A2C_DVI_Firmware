@@ -32,6 +32,7 @@ SOFTWARE.
 #include "config/config.h"
 #include "config/device_regs.h"
 #include "fonts/textfont.h"
+#include "dvi/a2dvi.h"
 
 #define VIDEX_ABUS
 #include "videx/videx_vterm.h"
@@ -207,6 +208,10 @@ static inline void romxe_faxx_check_read(uint_fast16_t address)
     }
 }
 
+#ifdef FEATURE_A2_AUDIO
+uint32_t s_soft_switch_C030_sample = 0;
+#endif
+
 static inline void __time_critical_func(apple2_softswitches)(bool is_write, uint32_t address, uint32_t value)
 {
     switch(address & 0x7f)
@@ -325,6 +330,16 @@ static inline void __time_critical_func(apple2_softswitches)(bool is_write, uint
             }
         }
         break;
+
+#ifdef FEATURE_A2_AUDIO
+    case 0x30:  //  Sound
+        if (s_soft_switch_C030_sample == 0)
+            s_soft_switch_C030_sample = 2000;
+        else
+            s_soft_switch_C030_sample = 0;
+        break;
+#endif 
+
 #ifdef APPLEIIGS
     case 0x22:
         if (IS_IFLAG(IFLAGS_IIGS_REGS) && (is_write))
@@ -653,7 +668,7 @@ static inline void abus_interface(uint32_t value)
     }
 
     // keep track of 6502 activity (debug monitor)
-    {
+    if (0) {                                                            //  Can't do sound and this
         uint_fast16_t address = ADDRESS_BUS(value);
 
         if (address < 0x100)
@@ -689,40 +704,142 @@ void __time_critical_func(abus_init)()
     abus_pio_setup();
 }
 
+#ifdef FEATURE_A2_AUDIO
+// Audio Related
+bool s_test_tone = false;           //  Not saved to config
+
+uint32_t s_bus_snd_count = 0;
+#define SND_CNT_FRAC 5800208        //  14MHz 5787469   Target rate is 8x411000=352800 Bus clock rate is 1020481 on my IIgs
+
+uint32_t s_sub_sample_count = 0;
+int32_t s_sub_sample_value = 0;
+
+int16_t s_snd_samples[4];
+uint32_t s_snd_samples_index = 0;
+
+int16_t s_tone_sample = -1000;
+
+uint32_t s_abus_snd_data_count = 0;
+
+uint64_t s_abus_boot_time = 1;                       //  Keep track of the time spent waiting on A2C video data for debugging
+
+
+//  Return a signed sample value
+int16_t __time_critical_func(process_sound_sub_samples_eight_x_test_tone)(uint32_t sub_sample_data)
+{    
+    s_sub_sample_count++;
+
+    if (s_sub_sample_count % 700 == 0)
+    {
+        if (s_tone_sample == -1000)
+            s_tone_sample = 1000;
+        else
+            s_tone_sample = -1000;
+    }
+
+    return s_tone_sample;
+}
+
+//  Return a signed sample value
+int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sample_data)
+{    
+    int16_t sample = ((int16_t)sub_sample_data) - 1000;                   //  samples seem to be from 0-2048 (272 - 1712)
+    
+    s_sub_sample_value = s_sub_sample_value + sample;
+    s_sub_sample_count++;
+
+    if (s_sub_sample_count % 8 == 0)
+    {
+        sample = s_sub_sample_value / 8;
+        s_sub_sample_value = 0;
+    }
+
+    return sample;
+}
+
+void __time_critical_func(add_sound_sample)(uint32_t snd_data) 
+{
+    int16_t sound_sample;
+    
+    if (s_test_tone == true)
+        sound_sample = process_sound_sub_samples_eight_x_test_tone(snd_data);
+    else
+        sound_sample = process_sound_sub_samples_eight_x(snd_data);
+
+    if (s_sub_sample_count % 8 == 0)
+    {
+        s_snd_samples[s_snd_samples_index] = sound_sample;
+
+        s_snd_samples_index++;
+
+        if (s_snd_samples_index == 4)
+        {
+            a2dvi_queue_audio_samples(&s_snd_samples[0], 4);
+            s_snd_samples_index = 0;
+        }
+    }
+
+    s_abus_snd_data_count++;
+}
+#endif			//	FEATURE_A2_AUDIO
+
+#define ABUS_RING_SIZE 4096         //  8192 byte, 1024 was too small
+
+volatile uint32_t s_abus_ring[ABUS_RING_SIZE];
+volatile uint32_t s_abus_ring_write_index = 0;
+volatile uint32_t s_abus_ring_read_index = 0;
+
+uint32_t s_abus_irq_count = 0;
+
+void abus_pio_rx_irq_handler(void) 
+{
+    while (!abus_pio_is_empty()) 
+    {
+        s_abus_ring[s_abus_ring_write_index] = abus_pio_read();
+        s_abus_ring_write_index = (s_abus_ring_write_index + 1) & (ABUS_RING_SIZE - 1);
+
+        if (s_abus_ring_write_index == s_abus_ring_read_index)
+            bus_overflow_counter++;
+    }
+
+    s_abus_irq_count++;
+
+    // Clear interrupt
+    pio_interrupt_clear(CONFIG_ABUS_PIO, 0);
+}
+
+
 void __time_critical_func(abus_loop)()
 {
     // initialize the Apple II bus interface
     abus_init();
+    
+    //  Turn on debug lines
+    SET_IFLAG(1, IFLAGS_DEBUG_LINES);
+    a2dvi_audio_enable(true);
+    // s_test_tone = true;
 
     uint32_t value = 0;
-#if FEATURE_ABUS_DEBUG
-    uint32_t idle_count = 0;
-    bus_overflow_counter = 0xffff;
-#endif
+
+    s_abus_boot_time = to_us_since_boot (get_absolute_time());
+
     while(1)
     {
-        if (abus_pio_is_full())
+        while (s_abus_ring_read_index != s_abus_ring_write_index)
         {
-            bus_overflow_counter++;
-            value = abus_pio_read();
-        }
-        else
-        {
-#ifdef FEATURE_ABUS_DEBUG
-            idle_count = 0;
-            while (abus_pio_is_empty()) idle_count++;
-            value = abus_pio_read();
-#else
-            value = abus_pio_blocking_read();
-#endif
-        }
+            value = s_abus_ring[s_abus_ring_read_index];
+            s_abus_ring_read_index = (s_abus_ring_read_index + 1) & (ABUS_RING_SIZE - 1);
 
-        abus_interface(value);
+            abus_interface(value);
 
-#ifdef FEATURE_ABUS_DEBUG
-        if (idle_count < bus_overflow_counter)
-            bus_overflow_counter = idle_count;
-#endif
-        bus_cycle_counter++;
+            bus_cycle_counter++;
+            s_bus_snd_count = s_bus_snd_count + SND_CNT_FRAC;       // 8.24 counter for sound samples
+
+            if ((s_bus_snd_count >> 24) != 0)
+            {
+                add_sound_sample(s_soft_switch_C030_sample);
+                s_bus_snd_count = s_bus_snd_count - (1 << 24);
+            }
+        }
     }
 }

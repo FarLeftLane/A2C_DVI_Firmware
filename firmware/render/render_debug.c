@@ -28,6 +28,11 @@ SOFTWARE.
 #include "render.h"
 #include "menu/menu.h"
 #include "dvi/a2dvi.h"
+#include "debug/debug.h"
+
+#ifdef FEATURE_A2_AUDIO
+#include "applebus/abus.h"
+#endif
 
 #ifdef FEATURE_A2C
 extern void update_a2c_debug_monitor(void);
@@ -51,6 +56,10 @@ void DELAYED_COPY_CODE(copy_str)(uint8_t* dest, const char* pMsg)
         *(dest++) = *(pMsg++)|0x80;
     }
 }
+
+#ifdef FEATURE_A2_AUDIO
+char s_temp_line_buffer[40];
+#endif
 
 void DELAYED_COPY_CODE(update_debug_monitor)(void)
 {
@@ -161,7 +170,11 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
         copy_str(&line2[14], "ZP:");
         int2hex(&line2[17], last_address_zp, 2);
 
-        if (IS_IFLAG(IFLAGS_TEST))
+        // FreeHeap on the Pico
+        copy_str(&line2[20], "F: ");
+        int2str(getFreeHeap(), (char *)&line2[22], 6);
+
+        if (true)   //  (IS_IFLAG(IFLAGS_TEST))
         {
             copy_str(&line2[33], "OV:");
             int2hex(&line2[36], bus_overflow_counter, 4);
@@ -169,6 +182,39 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
             bus_overflow_counter = 0xffff;
 #endif
         }
+
+#ifdef FEATURE_A2_AUDIO
+        if (1)
+        {
+            uint64_t end_time = to_us_since_boot (get_absolute_time());
+            uint64_t total_time = end_time - s_abus_boot_time;
+            float time_f = total_time / 1000000.0;
+
+            copy_str(&line1[0], "S: ");
+            float snd_rate = 110.0;
+            if (time_f != 0.0)
+                snd_rate = (float)s_abus_snd_data_count / time_f;
+            uint32_t snd_rate_int = snd_rate;
+            int2str(snd_rate_int, s_temp_line_buffer, 8);
+            copy_str(&line1[3], s_temp_line_buffer);
+
+            copy_str(&line1[3+8+1], "I: ");
+            float irq_rate = 110.0;
+            if (time_f != 0.0)
+                irq_rate = (float)s_abus_irq_count / time_f;
+            uint32_t irq_rate_int = irq_rate;
+            int2str(irq_rate_int, s_temp_line_buffer, 8);
+            copy_str(&line1[3+8+1+3], s_temp_line_buffer);
+
+            copy_str(&line1[3+8+1+3+8+1], "B: ");
+            float bus_rate = 110.0;
+            if (time_f != 0.0)
+                bus_rate = (float)bus_cycle_counter / time_f;
+            uint32_t bus_rate_int = bus_rate;
+            int2str(bus_rate_int, s_temp_line_buffer, 8);
+            copy_str(&line1[3+8+1+3+8+1+3], s_temp_line_buffer);
+        }
+#endif 
 
 #ifdef FEATURE_DEBUG_COUNTER
 #warning DEBUG FEATURE IS ENABLED! ************************************

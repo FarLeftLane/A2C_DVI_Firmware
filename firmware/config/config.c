@@ -412,7 +412,7 @@ void config_load_defaults(void)
 #ifdef FEATURE_A2C
     cfg_video_mode          = Dvi720x480;                   //  A2C_DVI Change default to 720
 #else
-    cfg_video_mode          = Dvi640x480;
+    cfg_video_mode          = Dvi720x480;
 #endif
     cfg_color_style         = 2; // improved
     color_mode              = COLOR_MODE_BW;
