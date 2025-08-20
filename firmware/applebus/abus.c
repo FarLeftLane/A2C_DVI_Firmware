@@ -821,10 +821,10 @@ void __time_critical_func(abus_loop)()
     abus_init();
     
     //  Turn on debug lines
-    SET_IFLAG(1, IFLAGS_DEBUG_LINES);
+//    SET_IFLAG(1, IFLAGS_DEBUG_LINES);
 
 #ifdef FEATURE_A2_AUDIO
-    //  Enable the audio output
+    //  Enable the audio output for these alpha/beta builds
     a2dvi_audio_enable(true);
 #endif 
 
