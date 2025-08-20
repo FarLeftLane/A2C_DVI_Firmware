@@ -55,6 +55,7 @@
         "variant": "c",
         "profiler.h": "c",
         "stdio_usb.h": "c",
-        "pico.h": "c"
+        "pico.h": "c",
+        "cstdint": "c"
     }
 }

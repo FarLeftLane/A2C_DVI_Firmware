@@ -61,6 +61,20 @@ static uint8_t reverse_7bits(uint8_t data)
 // Handle a write to one of the registers on this device's slot
 void device_write(uint_fast8_t reg, uint_fast8_t data)
 {
+    if (reg == 0xd)
+    {
+        //  Simple Debug on / off for testing, 
+        switch (data)
+        {
+            case 78: // oN
+                SET_IFLAG(1, IFLAGS_DEBUG_LINES);
+                break;
+            case 70: // oFf
+                SET_IFLAG(0, IFLAGS_DEBUG_LINES);
+                break;
+        }
+    }
+
     if (reg == 0xf)
     {
         /* simple lock/version check to prevent issues with mismatching

@@ -172,7 +172,8 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
 
         // FreeHeap on the Pico
         copy_str(&line2[20], "F: ");
-        int2str(getFreeHeap(), (char *)&line2[22], 6);
+        int2str(getFreeHeap(), s_temp_line_buffer, 6);
+        copy_str(&line2[22], s_temp_line_buffer);
 
         if (true)   //  (IS_IFLAG(IFLAGS_TEST))
         {
@@ -226,7 +227,7 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
 
 void DELAYED_COPY_CODE(render_debug)(bool IsVidexMode, bool top)
 {
-#ifdef FEATURE_A2C
+#if defined(FEATURE_A2C) || defined(FEATURE_A2_AUDIO)
     uint8_t color_mode = 0;
 #else
     uint8_t color_mode = 4;
