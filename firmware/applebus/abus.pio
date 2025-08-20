@@ -44,6 +44,8 @@
 ;  * SET pins are mapped to the transceiver enable signals
 ;  * input shift left & autopush @ 26 bits
 ;  * run at about 250MHz (4ns/instruction)
+;  * join TX & RX FIFO for 8 deep queue
+;  * irq 0 is used to signal queue should be drained (at 6 depth to reduce interrupt rate)
 ;
 .wrap_target
 start:
