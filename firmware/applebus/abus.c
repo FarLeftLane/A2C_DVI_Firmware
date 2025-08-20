@@ -668,7 +668,7 @@ static inline void abus_interface(uint32_t value)
     }
 
     // keep track of 6502 activity (debug monitor)
-    if (0) {                                                            //  Can't do sound and this
+    {
         uint_fast16_t address = ADDRESS_BUS(value);
 
         if (address < 0x100)
@@ -706,10 +706,11 @@ void __time_critical_func(abus_init)()
 
 #ifdef FEATURE_A2_AUDIO
 // Audio Related
-bool s_test_tone = false;           //  Not saved to config
+bool s_test_tone = false;               //  Not saved to config
 
 uint32_t s_bus_snd_count = 0;
-#define SND_CNT_FRAC 5800208        //  14MHz 5787469   Target rate is 8x411000=352800 Bus clock rate is 1020481 on my IIgs
+#define SND_CNT_FRAC 5800208            //  14MHz 5787469   Target rate is 8x44100=352800 Bus clock rate is 1020481 on my IIgs
+#define SND_SUB_SAMPLE_COUNT    8       //  8 = 5800208, 16 was too much
 
 uint32_t s_sub_sample_count = 0;
 int32_t s_sub_sample_value = 0;
@@ -748,9 +749,9 @@ int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sam
     s_sub_sample_value = s_sub_sample_value + sample;
     s_sub_sample_count++;
 
-    if (s_sub_sample_count % 8 == 0)
+    if (s_sub_sample_count % SND_SUB_SAMPLE_COUNT == 0)
     {
-        sample = s_sub_sample_value / 8;
+        sample = s_sub_sample_value / SND_SUB_SAMPLE_COUNT;
         s_sub_sample_value = 0;
     }
 
@@ -766,7 +767,7 @@ void __time_critical_func(add_sound_sample)(uint32_t snd_data)
     else
         sound_sample = process_sound_sub_samples_eight_x(snd_data);
 
-    if (s_sub_sample_count % 8 == 0)
+    if (s_sub_sample_count % SND_SUB_SAMPLE_COUNT == 0)
     {
         s_snd_samples[s_snd_samples_index] = sound_sample;
 
@@ -793,6 +794,10 @@ uint32_t s_abus_irq_count = 0;
 
 void abus_pio_rx_irq_handler(void) 
 {
+    //  This is useful for debugging perf issues, but not needed normally
+//    if (abus_pio_is_full())
+//        bus_overflow_counter++;
+    
     while (!abus_pio_is_empty()) 
     {
         s_abus_ring[s_abus_ring_write_index] = abus_pio_read();
@@ -802,6 +807,7 @@ void abus_pio_rx_irq_handler(void)
             bus_overflow_counter++;
     }
 
+    //  Stats for debugging
     s_abus_irq_count++;
 
     // Clear interrupt
