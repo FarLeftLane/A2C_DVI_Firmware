@@ -117,7 +117,7 @@ void abus_pio_setup(void)
     }
 
     // Enable SM0 RX FIFO not empty interrupt
-    pio_set_irq0_source_enabled(pio, pis_sm0_rx_fifo_not_empty, true);
+    pio_set_irq0_source_enabled(pio, pis_interrupt0, true);
 
     // Set handler
     irq_set_exclusive_handler(PIO0_IRQ_0, abus_pio_rx_irq_handler);
