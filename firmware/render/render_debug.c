@@ -57,9 +57,8 @@ void DELAYED_COPY_CODE(copy_str)(uint8_t* dest, const char* pMsg)
     }
 }
 
-#ifdef FEATURE_A2_AUDIO
-char s_temp_line_buffer[40];
-#endif
+//  temp buffer for debug_monitor
+char s_temp_abus_line_buffer[40];
 
 void DELAYED_COPY_CODE(update_debug_monitor)(void)
 {
@@ -172,8 +171,8 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
 
         // FreeHeap on the Pico
         copy_str(&line2[20], "F: ");
-        int2str(getFreeHeap(), s_temp_line_buffer, 6);
-        copy_str(&line2[22], s_temp_line_buffer);
+        int2str(getFreeHeap(), s_temp_abus_line_buffer, 6);
+        copy_str(&line2[22], s_temp_abus_line_buffer);
 
         if (true)   //  (IS_IFLAG(IFLAGS_TEST))
         {
@@ -196,24 +195,24 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
             if (time_f != 0.0)
                 snd_rate = (float)s_abus_snd_data_count / time_f;
             uint32_t snd_rate_int = snd_rate;
-            int2str(snd_rate_int, s_temp_line_buffer, 8);
-            copy_str(&line1[3], s_temp_line_buffer);
+            int2str(snd_rate_int, s_temp_abus_line_buffer, 8);
+            copy_str(&line1[3], s_temp_abus_line_buffer);
 
             copy_str(&line1[3+8+1], "I: ");
             float irq_rate = 110.0;
             if (time_f != 0.0)
                 irq_rate = (float)s_abus_irq_count / time_f;
             uint32_t irq_rate_int = irq_rate;
-            int2str(irq_rate_int, s_temp_line_buffer, 8);
-            copy_str(&line1[3+8+1+3], s_temp_line_buffer);
+            int2str(irq_rate_int, s_temp_abus_line_buffer, 8);
+            copy_str(&line1[3+8+1+3], s_temp_abus_line_buffer);
 
             copy_str(&line1[3+8+1+3+8+1], "B: ");
             float bus_rate = 110.0;
             if (time_f != 0.0)
                 bus_rate = (float)bus_cycle_counter / time_f;
             uint32_t bus_rate_int = bus_rate;
-            int2str(bus_rate_int, s_temp_line_buffer, 8);
-            copy_str(&line1[3+8+1+3+8+1+3], s_temp_line_buffer);
+            int2str(bus_rate_int, s_temp_abus_line_buffer, 8);
+            copy_str(&line1[3+8+1+3+8+1+3], s_temp_abus_line_buffer);
         }
 #endif 
 

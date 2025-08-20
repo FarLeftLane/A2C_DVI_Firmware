@@ -49,6 +49,8 @@ SOFTWARE.
 #include "hgrdecode_LUT.h"
 
 
+#ifdef FEATURE_A2C
+
 //  Pins
 #define PIN_SEROUT  0           //  A2C Pin 11 - A2E Pin 49 - GPIO 0
 #define PIN_14M     1           //  A2C Pin 2  - A2E Pin 48 - GPIO 1
@@ -1641,3 +1643,5 @@ void __time_critical_func(a2c_loop)()
 #endif
     }
 }
+
+#endif      //  FEATURE_A2C

@@ -66,10 +66,10 @@ void device_write(uint_fast8_t reg, uint_fast8_t data)
         //  Simple Debug on / off for testing, 
         switch (data)
         {
-            case 78: // oN
+            case 78: // oN ('N' = 78)
                 SET_IFLAG(1, IFLAGS_DEBUG_LINES);
                 break;
-            case 70: // oFf
+            case 70: // oFf ('F' = 70)
                 SET_IFLAG(0, IFLAGS_DEBUG_LINES);
                 break;
         }

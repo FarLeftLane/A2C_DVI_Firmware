@@ -706,19 +706,19 @@ void __time_critical_func(abus_init)()
 
 #ifdef FEATURE_A2_AUDIO
 // Audio Related
-bool s_test_tone = false;               //  Not saved to config
+static bool s_test_tone = false;               //  Not saved to config
 
-uint32_t s_bus_snd_count = 0;
+static uint32_t s_bus_snd_count = 0;
 #define SND_CNT_FRAC 5800208            //  14MHz 5787469   Target rate is 8x44100=352800 Bus clock rate is 1020481 on my IIgs
 #define SND_SUB_SAMPLE_COUNT    8       //  8 = 5800208, 16 was too much
 
-uint32_t s_sub_sample_count = 0;
-int32_t s_sub_sample_value = 0;
+static uint32_t s_sub_sample_count = 0;
+static int32_t s_sub_sample_value = 0;
 
-int16_t s_snd_samples[4];
-uint32_t s_snd_samples_index = 0;
+static int16_t s_snd_samples[4];
+static uint32_t s_snd_samples_index = 0;
 
-int16_t s_tone_sample = -1000;
+static int16_t s_tone_sample = -1000;
 
 uint32_t s_abus_snd_data_count = 0;
 
@@ -726,7 +726,7 @@ uint64_t s_abus_boot_time = 1;                       //  Keep track of the time 
 
 
 //  Return a signed sample value
-int16_t __time_critical_func(process_sound_sub_samples_eight_x_test_tone)(uint32_t sub_sample_data)
+int16_t __time_critical_func(abus_process_sound_sub_samples_eight_x_test_tone)(uint32_t sub_sample_data)
 {    
     s_sub_sample_count++;
 
@@ -742,7 +742,7 @@ int16_t __time_critical_func(process_sound_sub_samples_eight_x_test_tone)(uint32
 }
 
 //  Return a signed sample value
-int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sample_data)
+int16_t __time_critical_func(abus_process_sound_sub_samples_eight_x)(uint32_t sub_sample_data)
 {    
     int16_t sample = ((int16_t)sub_sample_data) - 1000;                   //  samples seem to be from 0-2048 (272 - 1712)
     
@@ -758,14 +758,14 @@ int16_t __time_critical_func(process_sound_sub_samples_eight_x)(uint32_t sub_sam
     return sample;
 }
 
-void __time_critical_func(add_sound_sample)(uint32_t snd_data) 
+void __time_critical_func(abus_add_sound_sample)(uint32_t snd_data) 
 {
     int16_t sound_sample;
     
     if (s_test_tone == true)
-        sound_sample = process_sound_sub_samples_eight_x_test_tone(snd_data);
+        sound_sample = abus_process_sound_sub_samples_eight_x_test_tone(snd_data);
     else
-        sound_sample = process_sound_sub_samples_eight_x(snd_data);
+        sound_sample = abus_process_sound_sub_samples_eight_x(snd_data);
 
     if (s_sub_sample_count % SND_SUB_SAMPLE_COUNT == 0)
     {
@@ -822,12 +822,18 @@ void __time_critical_func(abus_loop)()
     
     //  Turn on debug lines
     SET_IFLAG(1, IFLAGS_DEBUG_LINES);
+
+#ifdef FEATURE_A2_AUDIO
+    //  Enable the audio output
     a2dvi_audio_enable(true);
-    // s_test_tone = true;
+#endif 
 
     uint32_t value = 0;
 
+#ifdef FEATURE_A2_AUDIO
+    //  Record the boot time for stats
     s_abus_boot_time = to_us_since_boot (get_absolute_time());
+#endif 
 
     while(1)
     {
@@ -839,13 +845,15 @@ void __time_critical_func(abus_loop)()
             abus_interface(value);
 
             bus_cycle_counter++;
+#ifdef FEATURE_A2_AUDIO
             s_bus_snd_count = s_bus_snd_count + SND_CNT_FRAC;       // 8.24 counter for sound samples
 
             if ((s_bus_snd_count >> 24) != 0)
             {
-                add_sound_sample(s_soft_switch_C030_sample);
+                abus_add_sound_sample(s_soft_switch_C030_sample);
                 s_bus_snd_count = s_bus_snd_count - (1 << 24);
             }
+#endif 
         }
     }
 }

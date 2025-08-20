@@ -39,10 +39,15 @@ if (FEATURE_A2C)
 if (FEATURE_A2_AUDIO)
 set(BINARY_NAME "A2C_DVI_S_v${FW_VERSION}${FW_TYPE}")
 else()
-set(BINARY_NAME "A2DVI_v${FW_VERSION}${FW_TYPE}")
+set(BINARY_NAME "A2CDVI_v${FW_VERSION}${FW_TYPE}")
 endif()
 else()
+if (FEATURE_A2_AUDIO)
+set(BINARY_NAME "A2DVI_S_v${FW_VERSION}${FW_TYPE}")
+else()
 set(BINARY_NAME "A2DVI_v${FW_VERSION}${FW_TYPE}")
+endif()
+
 endif()
 
 if (FEATURE_A2C)
@@ -119,7 +124,7 @@ add_executable(${BINARY_NAME}
     firmware/applebus/abus_setup.c
     firmware/applebus/buffers.c
 
-#    firmware/a2c/a2c.c
+    firmware/a2c/a2c.c
 
     firmware/dvi/a2dvi.c
     firmware/dvi/tmds.c
