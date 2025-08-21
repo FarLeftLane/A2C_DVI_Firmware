@@ -777,7 +777,7 @@ bool DELAYED_COPY_CODE(menuDoSelectionPage0)(bool increase)
             if (a2dvi_audio_enabled())
                 a2dvi_audio_enable(false);                          //  Off
             else
-                a2dvi_audio_enable(true);                          //  On
+                a2dvi_audio_enable(true);                           //  On
             break;
     }
     return false;
