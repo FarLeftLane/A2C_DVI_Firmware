@@ -317,7 +317,11 @@ char DELAYED_COPY_DATA(MenuPage0)[] =
     "6 RGB COLOR STYLE:\0"
     "7 SCAN LINES:\0"
     "8 ANALOG RENDER FX:\0"
+#ifdef FEATURE_A2_AUDIO
     "9 SOUND:\0";
+#else
+    "\0";
+#endif
 
 char DELAYED_COPY_DATA(MenuPage1)[] =
     "0 DVI VIDEO OUTPUT:\0"
@@ -773,12 +777,14 @@ bool DELAYED_COPY_CODE(menuDoSelectionPage0)(bool increase)
             }
             config_setflags();
             break;
+#ifdef FEATURE_A2_AUDIO
         case 9: // SOUND
             if (a2dvi_audio_enabled())
                 a2dvi_audio_enable(false);                          //  Off
             else
                 a2dvi_audio_enable(true);                           //  On
             break;
+#endif
     }
     return false;
 }
@@ -1115,8 +1121,11 @@ void DELAYED_COPY_CODE(menuShow)(char key)
         menuOption(Y++, getMenuString(MenuColorStyle, cfg_color_style));
         menuOption(Y++, getMenuString(MenuScanlines, cfg_scanline_mode));
         menuOption(Y++, getMenuString(MenuRendering, cfg_rendering_fx));
+#ifdef FEATURE_A2_AUDIO
         menuOption(Y++, getMenuString(MenuOnOff, a2dvi_audio_enabled()));                           //  Sound
-
+#else
+        Y++;
+#endif
         menuOption(Y+1, 0);
     }
     else
