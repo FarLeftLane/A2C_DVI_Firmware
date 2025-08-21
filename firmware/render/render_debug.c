@@ -59,6 +59,7 @@ void DELAYED_COPY_CODE(copy_str)(uint8_t* dest, const char* pMsg)
 
 //  temp buffer for debug_monitor
 char s_temp_abus_line_buffer[40];
+extern uint_fast8_t  s_C000_value;
 
 void DELAYED_COPY_CODE(update_debug_monitor)(void)
 {
@@ -189,30 +190,55 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
             uint64_t end_time = to_us_since_boot (get_absolute_time());
             uint64_t total_time = end_time - s_abus_boot_time;
             float time_f = total_time / 1000000.0;
+            int x = 0;
 
-            copy_str(&line1[0], "S: ");
+            copy_str(&line1[x], "S:");
+            x = x + 2;
             float snd_rate = 110.0;
             if (time_f != 0.0)
                 snd_rate = (float)s_abus_snd_data_count / time_f;
             uint32_t snd_rate_int = snd_rate;
-            int2str(snd_rate_int, s_temp_abus_line_buffer, 8);
-            copy_str(&line1[3], s_temp_abus_line_buffer);
+            int2str(snd_rate_int, s_temp_abus_line_buffer, 6);
+            copy_str(&line1[x], s_temp_abus_line_buffer);
+            x = x + (6+1);
 
-            copy_str(&line1[3+8+1], "I: ");
+            copy_str(&line1[x], "I:");
+            x = x + 2;
             float irq_rate = 110.0;
             if (time_f != 0.0)
                 irq_rate = (float)s_abus_irq_count / time_f;
             uint32_t irq_rate_int = irq_rate;
-            int2str(irq_rate_int, s_temp_abus_line_buffer, 8);
-            copy_str(&line1[3+8+1+3], s_temp_abus_line_buffer);
+            int2str(irq_rate_int, s_temp_abus_line_buffer, 6);
+            copy_str(&line1[x], s_temp_abus_line_buffer);
+            x = x + (6+1);
 
-            copy_str(&line1[3+8+1+3+8+1], "B: ");
+            copy_str(&line1[x], "B:");
+            x = x + 2;
             float bus_rate = 110.0;
             if (time_f != 0.0)
                 bus_rate = (float)bus_cycle_counter / time_f;
             uint32_t bus_rate_int = bus_rate;
-            int2str(bus_rate_int, s_temp_abus_line_buffer, 8);
-            copy_str(&line1[3+8+1+3+8+1+3], s_temp_abus_line_buffer);
+            int2str(bus_rate_int, s_temp_abus_line_buffer, 7);
+            copy_str(&line1[x], s_temp_abus_line_buffer);
+            x = x + (7+1);
+
+            copy_str(&line1[x], "K: ");
+            x = x + 2;
+            int2hex(&line1[x], s_C000_value, 2);
+            x = x + (2+1);
+
+            if (IS_IFLAG(IFLAGS_PAL))
+                copy_str(&line1[x], "PAL");
+            else
+                copy_str(&line1[x], "NTSC");
+            x = x + (4);
+
+            if (cfg_video_mode == Dvi720x480)
+                copy_str(&line1[x], "720");
+            else if (cfg_video_mode == Dvi640x480)
+                copy_str(&line1[x], "640");
+            else
+                copy_str(&line1[x], "?x?");
         }
 #endif 
 
