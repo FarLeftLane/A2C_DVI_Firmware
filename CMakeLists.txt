@@ -6,7 +6,7 @@ message(STATUS "Building firmware version ${FW_VERSION}")
 
 option(FEATURE_PICO2 "Build project for PICO2 (RP2350) instead of original PICO (RP2040)" OFF)
 option(FEATURE_TEST  "Build test firmware instead of normal firmware" OFF)
-option(FEATURE_A2C  "Build A2C firmware instead of normal A2DVI slotted firmware" OFF)
+option(FEATURE_A2C  "Build A2C firmware instead of normal A2DVI slotted firmware" ON)
 option(FEATURE_A2_AUDIO  "Experimental Audio support" ON)
 
 set(PICO_STDIO_UART OFF)
