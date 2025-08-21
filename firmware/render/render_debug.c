@@ -189,6 +189,7 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
         extern uint32_t s_abus_snd_data_count;
         extern uint32_t s_abus_irq_count;
         extern uint_fast8_t s_C000_value;
+        extern bool s_snd_rate_NTSC;
 
         if (1)
         {
@@ -232,11 +233,17 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
             int2hex(&line1[x], s_C000_value, 2);
             x = x + (2+1);
 
-            if (IS_IFLAG(IFLAGS_PAL))
-                copy_str(&line1[x], "PAL");
+            if (s_snd_rate_NTSC)
+                copy_str(&line1[x], "SNx");
             else
-                copy_str(&line1[x], "NTSC");
-            x = x + (4);
+                copy_str(&line1[x], "SPx");
+            x = x + 3;
+
+            if (IS_IFLAG(IFLAGS_PAL))
+                copy_str(&line1[x], "P");
+            else
+                copy_str(&line1[x], "N");
+            x = x + 1;
 
             if (cfg_video_mode == Dvi720x480)
                 copy_str(&line1[x], "720");
