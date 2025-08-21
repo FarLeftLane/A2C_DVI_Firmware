@@ -249,12 +249,12 @@ static inline void __time_critical_func(apple2_softswitches)(bool is_write, uint
                     //  Toggle debug
                     SET_IFLAG(!IS_IFLAG(IFLAGS_DEBUG_LINES), IFLAGS_DEBUG_LINES);
                 }
-                if (C000_value == 0x56) //  'V'
+/*                if (C000_value == 0x56) //  'V'   Video mode for debugging
                 {
                     s_ESC_pressed = false;
                     cfg_video_mode ^= 1;
                     cfg_video_mode |= 0x10;
-                }
+                } */
                 else
                 {
                     s_ESC_pressed = false;
@@ -954,7 +954,7 @@ void __time_critical_func(abus_loop)()
             }
 #endif 
         }
-        
+
 #ifdef FEATURE_A2_AUDIO
         if (s_bus_rate_calibrated == false)
             abus_calibrate();
