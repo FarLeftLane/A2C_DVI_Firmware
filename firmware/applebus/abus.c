@@ -210,6 +210,8 @@ static inline void romxe_faxx_check_read(uint_fast16_t address)
 
 #ifdef FEATURE_A2_AUDIO
 uint32_t s_soft_switch_C030_sample = 0;
+uint_fast8_t  s_C000_value;
+bool s_ESC_pressed = false;
 #endif
 
 static inline void __time_critical_func(apple2_softswitches)(bool is_write, uint32_t address, uint32_t value)
@@ -220,6 +222,42 @@ static inline void __time_critical_func(apple2_softswitches)(bool is_write, uint
         if (is_write) // on IIE+IIGS only (but doesn't matter for clearing the register)
         {
             soft_switches &= ~SOFTSW_80STORE;
+        }
+        else
+        {
+            //  Read the KBD value, mask off the high bit
+            uint_fast8_t C000_value = DATA_BUS(value) & 0x7F;
+
+            s_C000_value = C000_value;
+            
+            //  Is the ESC (1B) key pressed
+            if (C000_value == 0x1B)
+            {
+                s_ESC_pressed = true;
+                break;
+            } 
+            else if (s_ESC_pressed == true)
+            {
+                //  Is the '~' (7E) key pressed after the ESC key
+                if (C000_value == 0x7E)
+                {
+                    s_ESC_pressed = false;
+
+                    //  Toggle debug
+                    SET_IFLAG(!IS_IFLAG(IFLAGS_DEBUG_LINES), IFLAGS_DEBUG_LINES);
+                }
+                if (C000_value == 0x56) //  'V'
+                {
+                    s_ESC_pressed = false;
+                    
+                    cfg_video_mode ^= 1;
+                    cfg_video_mode |= 0x10;
+                }
+                else
+                {
+                    s_ESC_pressed = false;
+                }
+            }
         }
         break;
     case 0x01: // 80STOREON
@@ -706,11 +744,17 @@ void __time_critical_func(abus_init)()
 
 #ifdef FEATURE_A2_AUDIO
 // Audio Related
-static bool s_test_tone = false;               //  Not saved to config
+static bool s_test_tone = false;            //  Not saved to config
 
+/*  SNT_CNT_XXX_FRAC is a 8.24 fixed point number
+    The Apple II bus clock rate is the machine 14MHz clock (14.31818 NTSC and 14.25045 PAL) divided by 14 and corrected for the long cycle
+    14.31818 MHz x ( 65 / ((64 x 14) + 16) ) = 1.202484 MHz
+    _FRAC = (( 8 x 44100 ) / 1.202484) * 2^24
+*/
 static uint32_t s_bus_snd_count = 0;
-#define SND_CNT_FRAC 5800208            //  14MHz 5787469   Target rate is 8x44100=352800 Bus clock rate is 1020481 on my IIgs
-#define SND_SUB_SAMPLE_COUNT    8       //  8 = 5800208, 16 was too much
+#define SND_CNT_NTSC_FRAC 5800208           //  14.31818   Target rate is 8x44100=352800 Bus clock rate is 1020481 on my IIgs
+#define SND_CNT_PAL_FRAC 5827756            //  14.25045   Target rate is 8x44100=352800 Bus clock rate is 1020481 on my IIgs
+#define SND_SUB_SAMPLE_COUNT    8           //  8 = 5800208, 16 was too much and caused overflows
 
 static uint32_t s_sub_sample_count = 0;
 static int32_t s_sub_sample_value = 0;
@@ -846,7 +890,14 @@ void __time_critical_func(abus_loop)()
 
             bus_cycle_counter++;
 #ifdef FEATURE_A2_AUDIO
-            s_bus_snd_count = s_bus_snd_count + SND_CNT_FRAC;       // 8.24 counter for sound samples
+            uint32_t snd_cnt_frac;
+
+            if (IS_IFLAG(IFLAGS_PAL))
+                snd_cnt_frac = SND_CNT_PAL_FRAC;
+            else
+                snd_cnt_frac = SND_CNT_NTSC_FRAC;
+
+            s_bus_snd_count = s_bus_snd_count + snd_cnt_frac;       // 8.24 counter for sound samples
 
             if ((s_bus_snd_count >> 24) != 0)
             {
