@@ -85,6 +85,9 @@ void abus_pio_setup(void)
     // no divider, run at full speed
     sm_config_set_clkdiv_int_frac(&pio_cfg, 1, 0);
 
+    // We only receive, so disable the TX FIFO to make the RX FIFO deeper.
+    sm_config_set_fifo_join(&pio_cfg, PIO_FIFO_JOIN_RX);
+
     pio_sm_init(pio, sm, program_offset, &pio_cfg);
 
     // configure the GPIOs
@@ -112,6 +115,13 @@ void abus_pio_setup(void)
         pio_gpio_init(pio, pin);
         gpio_set_pulls(pin, false, false);
     }
+
+    // Enable SM0 RX FIFO not empty interrupt
+    pio_set_irq0_source_enabled(pio, pis_interrupt0, true);
+
+    // Set handler
+    irq_set_exclusive_handler(PIO0_IRQ_0, abus_pio_rx_irq_handler);
+    irq_set_enabled(PIO0_IRQ_0, true);
 
     pio_enable_sm_mask_in_sync(pio, (1 << ABUS_MAIN_SM));
 }

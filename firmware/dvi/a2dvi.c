@@ -95,7 +95,7 @@ void DELAYED_COPY_CODE(a2dvi_dvi_enable)(uint32_t video_mode)
             break;
         
         default:
-            cfg_audio_enabled = false;                              //  We don't knwo the right rates
+            cfg_audio_enabled = false;                              //  We don't know the right rates
             break;
     }
 

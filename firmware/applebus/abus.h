@@ -41,3 +41,10 @@ void abus_interface (uint32_t value);
 #define ADDRESS_BUS_HI_NIBBLE(value)     ((value >> (10+12)) & 0xf)
 #define ADDRESS_BUS_HI_BYTE(value)       ((value >> (10+8)) & 0xff)
 #define DATA_BUS(value)                  (value & 0xff)
+
+#ifdef FEATURE_A2_AUDIO
+extern uint32_t s_abus_snd_data_count;
+extern uint64_t s_abus_boot_time;
+#endif
+
+extern uint32_t s_abus_irq_count;

@@ -28,6 +28,11 @@ SOFTWARE.
 #include "render.h"
 #include "menu/menu.h"
 #include "dvi/a2dvi.h"
+#include "debug/debug.h"
+
+#ifdef FEATURE_A2_AUDIO
+#include "applebus/abus.h"
+#endif
 
 #ifdef FEATURE_A2C
 extern void update_a2c_debug_monitor(void);
@@ -52,7 +57,9 @@ void DELAYED_COPY_CODE(copy_str)(uint8_t* dest, const char* pMsg)
     }
 }
 
+//  temp buffer for debug_monitor
 char s_temp_abus_line_buffer[40];
+extern uint_fast8_t  s_C000_value;
 
 void DELAYED_COPY_CODE(update_debug_monitor)(void)
 {
@@ -163,7 +170,12 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
         copy_str(&line2[14], "ZP:");
         int2hex(&line2[17], last_address_zp, 2);
 
-        if (IS_IFLAG(IFLAGS_TEST))
+        // FreeHeap on the Pico
+        copy_str(&line2[20], "F: ");
+        int2str(getFreeHeap(), s_temp_abus_line_buffer, 6);
+        copy_str(&line2[22], s_temp_abus_line_buffer);
+
+        if (true)   //  (IS_IFLAG(IFLAGS_TEST))
         {
             copy_str(&line2[33], "OV:");
             int2hex(&line2[36], bus_overflow_counter, 4);
@@ -245,7 +257,7 @@ void DELAYED_COPY_CODE(update_debug_monitor)(void)
 
 void DELAYED_COPY_CODE(render_debug)(bool IsVidexMode, bool top)
 {
-#ifdef FEATURE_A2C
+#if defined(FEATURE_A2C) || defined(FEATURE_A2_AUDIO)
     uint8_t color_mode = 0;
 #else
     uint8_t color_mode = 4;

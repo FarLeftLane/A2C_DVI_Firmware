@@ -252,7 +252,6 @@ static inline void __time_critical_func(apple2_softswitches)(bool is_write, uint
                 if (C000_value == 0x56) //  'V'
                 {
                     s_ESC_pressed = false;
-
                     cfg_video_mode ^= 1;
                     cfg_video_mode |= 0x10;
                 }
@@ -935,23 +934,27 @@ void __time_critical_func(abus_loop)()
 
     while(1)
     {
-        value = s_abus_ring[s_abus_ring_read_index];
-        s_abus_ring_read_index = (s_abus_ring_read_index + 1) & (ABUS_RING_SIZE - 1);
+        while (s_abus_ring_read_index != s_abus_ring_write_index)
+        {
 
-        abus_interface(value);
+            value = s_abus_ring[s_abus_ring_read_index];
+            s_abus_ring_read_index = (s_abus_ring_read_index + 1) & (ABUS_RING_SIZE - 1);
 
-        bus_cycle_counter++;
+            abus_interface(value);
+
+            bus_cycle_counter++;
 
 #ifdef FEATURE_A2_AUDIO
-        s_bus_snd_count = s_bus_snd_count + s_snd_cnt_frac;       // 8.24 counter for sound samples
+            s_bus_snd_count = s_bus_snd_count + s_snd_cnt_frac;       // 8.24 counter for sound samples
 
-        if ((s_bus_snd_count >> 24) != 0)
-        {
-            abus_add_sound_sample(s_soft_switch_C030_sample);
-            s_bus_snd_count = s_bus_snd_count - (1 << 24);
-        }
+            if ((s_bus_snd_count >> 24) != 0)
+            {
+                abus_add_sound_sample(s_soft_switch_C030_sample);
+                s_bus_snd_count = s_bus_snd_count - (1 << 24);
+            }
 #endif 
-
+        }
+        
 #ifdef FEATURE_A2_AUDIO
         if (s_bus_rate_calibrated == false)
             abus_calibrate();

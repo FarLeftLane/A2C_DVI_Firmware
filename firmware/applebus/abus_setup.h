@@ -25,6 +25,7 @@ SOFTWARE.
 #pragma once
 
 #include <hardware/pio.h>
+#include "util_queue_u32_inline.h"
 
 // use PIO 0 (PIO1 is used for VGA/DVI)
 #define CONFIG_ABUS_PIO pio0
@@ -35,8 +36,10 @@ SOFTWARE.
 #define abus_pio_fifo_level()       (pio_sm_get_rx_fifo_level(CONFIG_ABUS_PIO, ABUS_MAIN_SM))
 #define abus_pio_is_full()          (pio_sm_is_rx_fifo_full(CONFIG_ABUS_PIO, ABUS_MAIN_SM))
 #define abus_pio_is_empty()         (pio_sm_is_rx_fifo_empty(CONFIG_ABUS_PIO, ABUS_MAIN_SM))
+#define abus_pio_clear()            (pio_sm_clear_fifos(CONFIG_ABUS_PIO, ABUS_MAIN_SM))
 
 #define abus_pio_read()             (pio_sm_get(CONFIG_ABUS_PIO, ABUS_MAIN_SM))
 #define abus_pio_blocking_read()    (pio_sm_get_blocking(CONFIG_ABUS_PIO, ABUS_MAIN_SM))
 
 void abus_pio_setup(void);
+void abus_pio_rx_irq_handler(void);

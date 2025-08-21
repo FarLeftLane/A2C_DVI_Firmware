@@ -396,7 +396,7 @@ void config_load(void)
     if(IS_STORED_IN_CONFIG(cfg, audio_config))
         cfg_audio_enabled = ((cfg->audio_config & CFG_AUDIO_ENABLE_BIT) != 0);
     else
-        cfg_audio_enabled = false;
+        cfg_audio_enabled = false;                        //  By default, audio is off, user can enable
 }
 
 void config_load_defaults(void)
@@ -412,7 +412,7 @@ void config_load_defaults(void)
 #ifdef FEATURE_A2C
     cfg_video_mode          = Dvi720x480;                   //  A2C_DVI Change default to 720
 #else
-    cfg_video_mode          = Dvi640x480;
+    cfg_video_mode          = Dvi720x480;
 #endif
     cfg_color_style         = 2; // improved
     color_mode              = COLOR_MODE_BW;

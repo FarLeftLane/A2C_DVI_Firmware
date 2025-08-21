@@ -317,7 +317,7 @@ char DELAYED_COPY_DATA(MenuPage0)[] =
     "6 RGB COLOR STYLE:\0"
     "7 SCAN LINES:\0"
     "8 ANALOG RENDER FX:\0"
-    "\0";
+    "9 SOUND:\0";
 
 char DELAYED_COPY_DATA(MenuPage1)[] =
     "0 DVI VIDEO OUTPUT:\0"
@@ -773,6 +773,12 @@ bool DELAYED_COPY_CODE(menuDoSelectionPage0)(bool increase)
             }
             config_setflags();
             break;
+        case 9: // SOUND
+            if (a2dvi_audio_enabled())
+                a2dvi_audio_enable(false);                          //  Off
+            else
+                a2dvi_audio_enable(true);                           //  On
+            break;
     }
     return false;
 }
@@ -829,7 +835,7 @@ bool DELAYED_COPY_CODE(menuDoSelectionPage1)(bool increase)
 
 bool DELAYED_COPY_CODE(menuDoSelection)(bool increase)
 {
-    if (MenuSelection<9)
+    if (MenuSelection<=9)
     {
         return (MenuPage == 0) ? menuDoSelectionPage0(increase) : menuDoSelectionPage1(increase);
     }
@@ -1109,7 +1115,7 @@ void DELAYED_COPY_CODE(menuShow)(char key)
         menuOption(Y++, getMenuString(MenuColorStyle, cfg_color_style));
         menuOption(Y++, getMenuString(MenuScanlines, cfg_scanline_mode));
         menuOption(Y++, getMenuString(MenuRendering, cfg_rendering_fx));
-        Y++;
+        menuOption(Y++, getMenuString(MenuOnOff, a2dvi_audio_enabled()));                           //  Sound
 
         menuOption(Y+1, 0);
     }

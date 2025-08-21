@@ -36,8 +36,7 @@ MEMORY
     FLASH_CONFIG(r)   : ORIGIN = 0x10000000 + (2048k - __FLASH_CONFIG_LEN - __FLASH_FONT_DIR_LEN - __FLASH_FONT_ROMS_LEN), LENGTH = __FLASH_CONFIG_LEN
     FLASH_FONT_DIR(r) : ORIGIN = 0x10000000 + (2048k - __FLASH_FONT_ROMS_LEN - __FLASH_FONT_DIR_LEN), LENGTH = __FLASH_FONT_DIR_LEN
     FLASH_FONT_ROMS(r): ORIGIN = 0x10000000 + (2048k - __FLASH_FONT_ROMS_LEN), LENGTH = __FLASH_FONT_ROMS_LEN
-    RAM(rwx)          : ORIGIN = 0x20000000, LENGTH = 160k
-    APPLEDATA(rwx)    : ORIGIN = 0x20028000, LENGTH = 96k
+    RAM(rwx)          : ORIGIN = 0x20000000, LENGTH = 256k
     SCRATCH_X(rwx)    : ORIGIN = 0x20040000, LENGTH = 4k
     SCRATCH_Y(rwx)    : ORIGIN = 0x20041000, LENGTH = 4k
 }
@@ -203,13 +202,6 @@ SECTIONS
         . = ALIGN(4);
         *(.uninitialized_data*)
     } > RAM
-
-    .appledata (NOLOAD): {
-        __appledata_start__ = .;
-        *(.appledata.*)
-        . = ALIGN(4);
-        __appledata_end__ = .;
-    } > APPLEDATA
 
     /* Start and end symbols must be word-aligned */
     .scratch_x : {
