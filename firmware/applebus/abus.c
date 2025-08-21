@@ -32,6 +32,9 @@ SOFTWARE.
 #include "config/config.h"
 #include "config/device_regs.h"
 #include "fonts/textfont.h"
+#include "dvi/a2dvi.h"
+#include "pico/time.h"
+
 
 #define VIDEX_ABUS
 #include "videx/videx_vterm.h"
@@ -207,6 +210,13 @@ static inline void romxe_faxx_check_read(uint_fast16_t address)
     }
 }
 
+#ifdef FEATURE_A2_AUDIO
+uint32_t s_soft_switch_C030_sample = 0;
+#endif
+
+uint_fast8_t s_C000_value = 0;
+bool s_ESC_pressed = false;
+
 static inline void __time_critical_func(apple2_softswitches)(bool is_write, uint32_t address, uint32_t value)
 {
     switch(address & 0x7f)
@@ -215,6 +225,42 @@ static inline void __time_critical_func(apple2_softswitches)(bool is_write, uint
         if (is_write) // on IIE+IIGS only (but doesn't matter for clearing the register)
         {
             soft_switches &= ~SOFTSW_80STORE;
+        }
+        else
+        {
+            //  Read the KBD value, mask off the high bit
+            uint_fast8_t C000_value = DATA_BUS(value) & 0x7F;
+
+            s_C000_value = C000_value;
+            
+            //  Is the ESC (1B) key pressed
+            if (C000_value == 0x1B)
+            {
+                s_ESC_pressed = true;
+                break;
+            } 
+            else if (s_ESC_pressed == true)
+            {
+                //  Is the '~' (7E) key pressed after the ESC key
+                if (C000_value == 0x7E)
+                {
+                    s_ESC_pressed = false;
+
+                    //  Toggle debug
+                    SET_IFLAG(!IS_IFLAG(IFLAGS_DEBUG_LINES), IFLAGS_DEBUG_LINES);
+                }
+                if (C000_value == 0x56) //  'V'
+                {
+                    s_ESC_pressed = false;
+
+                    cfg_video_mode ^= 1;
+                    cfg_video_mode |= 0x10;
+                }
+                else
+                {
+                    s_ESC_pressed = false;
+                }
+            }
         }
         break;
     case 0x01: // 80STOREON
@@ -325,6 +371,16 @@ static inline void __time_critical_func(apple2_softswitches)(bool is_write, uint
             }
         }
         break;
+        
+#ifdef FEATURE_A2_AUDIO
+    case 0x30:  //  Sound
+        if (s_soft_switch_C030_sample == 0)
+            s_soft_switch_C030_sample = 2000;
+        else
+            s_soft_switch_C030_sample = 0;
+        break;
+#endif 
+
 #ifdef APPLEIIGS
     case 0x22:
         if (IS_IFLAG(IFLAGS_IIGS_REGS) && (is_write))
@@ -689,40 +745,216 @@ void __time_critical_func(abus_init)()
     abus_pio_setup();
 }
 
+#ifdef FEATURE_A2_AUDIO
+// Audio Related
+static bool s_test_tone = false;            //  Not saved to config
+
+/*  SNT_CNT_XXX_FRAC is a 8.24 fixed point number
+    The Apple II bus clock rate is the machine 14MHz clock (14.31818 NTSC and 14.25045 PAL) divided by 14 and corrected for the long cycle
+    14.31818 MHz x ( 65 / ((64 x 14) + 16) ) = 1.202484 MHz
+    _FRAC = (( 8 x 44100 ) / 1.202484) * 2^24
+*/
+static uint32_t s_bus_snd_count = 0;
+#define SND_CNT_NTSC_FRAC 5800208           //  14.31818   Target rate is 8x44100=352800 Bus clock rate is 1020481 on my IIgs
+#define SND_CNT_PAL_FRAC 5827756            //  14.25045   Target rate is 8x44100=352800 Bus clock rate is 1020481 on my IIgs
+#define SND_SUB_SAMPLE_COUNT    8           //  8 = 5800208, 16 was too much and caused overflows
+
+static uint32_t s_sub_sample_count = 0;
+static int32_t s_sub_sample_value = 0;
+
+static int16_t s_snd_samples[4];
+static uint32_t s_snd_samples_index = 0;
+
+static int16_t s_tone_sample = -1000;
+
+uint32_t s_abus_snd_data_count = 0;
+
+uint64_t s_abus_boot_time = 1;                       //  Keep track of the time spent waiting on A2C video data for debugging
+
+
+//  Return a signed sample value
+int16_t __time_critical_func(abus_process_sound_sub_samples_eight_x_test_tone)(uint32_t sub_sample_data)
+{    
+    s_sub_sample_count++;
+
+    if (s_sub_sample_count % 700 == 0)
+    {
+        if (s_tone_sample == -1000)
+            s_tone_sample = 1000;
+        else
+            s_tone_sample = -1000;
+    }
+
+    return s_tone_sample;
+}
+
+//  Return a signed sample value
+int16_t __time_critical_func(abus_process_sound_sub_samples_eight_x)(uint32_t sub_sample_data)
+{    
+    int16_t sample = ((int16_t)sub_sample_data) - 1000;                   //  samples seem to be from 0-2048 (272 - 1712)
+    
+    s_sub_sample_value = s_sub_sample_value + sample;
+    s_sub_sample_count++;
+
+    if (s_sub_sample_count % SND_SUB_SAMPLE_COUNT == 0)
+    {
+        sample = s_sub_sample_value / SND_SUB_SAMPLE_COUNT;
+        s_sub_sample_value = 0;
+    }
+
+    return sample;
+}
+
+void __time_critical_func(abus_add_sound_sample)(uint32_t snd_data) 
+{
+    int16_t sound_sample;
+    
+    if (s_test_tone == true)
+        sound_sample = abus_process_sound_sub_samples_eight_x_test_tone(snd_data);
+    else
+        sound_sample = abus_process_sound_sub_samples_eight_x(snd_data);
+
+    if (s_sub_sample_count % SND_SUB_SAMPLE_COUNT == 0)
+    {
+        s_snd_samples[s_snd_samples_index] = sound_sample;
+
+        s_snd_samples_index++;
+
+        if (s_snd_samples_index == 4)
+        {
+            a2dvi_queue_audio_samples(&s_snd_samples[0], 4);
+            s_snd_samples_index = 0;
+        }
+    }
+
+    s_abus_snd_data_count++;
+}
+
+//  Bus calibration for NTSC or PAL
+bool s_bus_rate_calibrated = false;
+bool s_bus_rate_initalized = false;
+uint64_t s_bus_rate_start_time = 0;
+uint32_t s_bus_rate_start_bus_cycle_counter = 0;
+uint32_t s_bus_rate_time = 0;
+uint32_t s_snd_cnt_frac = SND_CNT_NTSC_FRAC;
+bool s_snd_rate_NTSC = true;
+
+void __time_critical_func(abus_calibrate)(void)
+{
+    //  Already calibrated, just return
+    if (s_bus_rate_calibrated == true)
+        return;
+    
+    if (s_bus_rate_initalized == false)
+    {
+        //  Init starting params
+        s_bus_rate_initalized = true;
+        s_bus_rate_start_bus_cycle_counter = bus_cycle_counter;
+        s_bus_rate_start_time = to_us_since_boot(get_absolute_time());
+    }
+    else
+    {
+        //  After a 250,000 cycles, see if we are NTSC or PAL
+        if ((bus_cycle_counter - s_bus_rate_start_bus_cycle_counter) > 250000)
+        {
+            uint64_t total_time = to_us_since_boot(get_absolute_time()) - s_bus_rate_start_time;
+
+            uint32_t time = total_time;
+
+            if (time < 245564)      //  This is the average between NTSC 2443982 and PAL 246146
+            {
+                s_snd_cnt_frac = SND_CNT_NTSC_FRAC;
+                s_snd_rate_NTSC = true;
+            }
+            else
+            {
+                s_snd_cnt_frac = SND_CNT_PAL_FRAC;
+                s_snd_rate_NTSC = false;
+            }
+            
+            s_bus_rate_calibrated = true;
+        }
+    }
+}
+#endif			//	FEATURE_A2_AUDIO
+
+#define ABUS_RING_SIZE 4096         //  8192 byte, 1024 was too small
+
+volatile uint32_t s_abus_ring[ABUS_RING_SIZE];
+volatile uint32_t s_abus_ring_write_index = 0;
+volatile uint32_t s_abus_ring_read_index = 0;
+
+uint32_t s_abus_irq_count = 0;
+
+void __time_critical_func(abus_pio_rx_irq_handler)(void) 
+{
+    //  This is useful for debugging perf issues, but not needed normally
+//    if (abus_pio_is_full())
+//        bus_overflow_counter++;
+    
+    while (!abus_pio_is_empty()) 
+    {
+        s_abus_ring[s_abus_ring_write_index] = abus_pio_read();
+        s_abus_ring_write_index = (s_abus_ring_write_index + 1) & (ABUS_RING_SIZE - 1);
+
+        if (s_abus_ring_write_index == s_abus_ring_read_index)
+            bus_overflow_counter++;
+    }
+
+    //  Stats for debugging
+    s_abus_irq_count++;
+
+    // Clear interrupt
+    pio_interrupt_clear(CONFIG_ABUS_PIO, 0);
+}
+
+
 void __time_critical_func(abus_loop)()
 {
+    uint32_t value = 0;
+
     // initialize the Apple II bus interface
     abus_init();
+    
+    //  Turn on debug lines
+//    SET_IFLAG(1, IFLAGS_DEBUG_LINES);
 
-    uint32_t value = 0;
-#if FEATURE_ABUS_DEBUG
-    uint32_t idle_count = 0;
-    bus_overflow_counter = 0xffff;
-#endif
+#ifdef FEATURE_A2_AUDIO
+    //  Enable the audio output for these alpha/beta builds
+    a2dvi_audio_enable(true);
+
+    // Initalize this based on the setting, but determine bus speed in and use that
+    if (IS_IFLAG(IFLAGS_PAL))
+        s_snd_cnt_frac = SND_CNT_PAL_FRAC;
+    else
+        s_snd_cnt_frac = SND_CNT_NTSC_FRAC;
+
+    //  Record the boot time for stats
+    s_abus_boot_time = to_us_since_boot(get_absolute_time());
+#endif 
+
     while(1)
     {
-        if (abus_pio_is_full())
-        {
-            bus_overflow_counter++;
-            value = abus_pio_read();
-        }
-        else
-        {
-#ifdef FEATURE_ABUS_DEBUG
-            idle_count = 0;
-            while (abus_pio_is_empty()) idle_count++;
-            value = abus_pio_read();
-#else
-            value = abus_pio_blocking_read();
-#endif
-        }
+        value = s_abus_ring[s_abus_ring_read_index];
+        s_abus_ring_read_index = (s_abus_ring_read_index + 1) & (ABUS_RING_SIZE - 1);
 
         abus_interface(value);
 
-#ifdef FEATURE_ABUS_DEBUG
-        if (idle_count < bus_overflow_counter)
-            bus_overflow_counter = idle_count;
-#endif
         bus_cycle_counter++;
+
+#ifdef FEATURE_A2_AUDIO
+        s_bus_snd_count = s_bus_snd_count + s_snd_cnt_frac;       // 8.24 counter for sound samples
+
+        if ((s_bus_snd_count >> 24) != 0)
+        {
+            abus_add_sound_sample(s_soft_switch_C030_sample);
+            s_bus_snd_count = s_bus_snd_count - (1 << 24);
+        }
+#endif 
+
+#ifdef FEATURE_A2_AUDIO
+        if (s_bus_rate_calibrated == false)
+            abus_calibrate();
+#endif
     }
 }
