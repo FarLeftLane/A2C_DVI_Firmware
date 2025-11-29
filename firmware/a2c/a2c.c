@@ -394,15 +394,10 @@ static bool DELAYED_COPY_CODE(config_command)(char * command_name, int index, bo
         else if (index == 1)
         {
             //  Default
-            DviVideoMode_t old_video_mode = cfg_video_mode;
-
             config_load_defaults();
 
-            if (old_video_mode != cfg_video_mode)
-            {
-                s_needs_reboot = true;
-                s_save_required = true;
-            }
+            s_needs_reboot = true;
+            s_save_required = true;
         }
         else if (index == 2)
         {
@@ -495,6 +490,39 @@ static bool DELAYED_COPY_CODE(tone_command)(char * command_name, int index, bool
 }
 #endif
 
+static bool DELAYED_COPY_CODE(machine_command)(char * command_name, int index, bool update, bool selected)
+{
+    bool result = false;
+
+    if (update == true)
+    {
+        if (index == 0)                                     //  IIc
+        {
+            cfg_laser_enabled = false;
+            s_save_required = true;
+            s_needs_reboot = true;
+        }
+        else if (index == 1)                                //  Laser
+        {
+            cfg_laser_enabled = true;
+            SET_IFLAG(0, IFLAGS_FORCED_MONO);               //  Laser can't do Mixed, set to Color
+            cfg_rendering_fx = FX_NONE;
+
+            s_save_required = true;
+            s_needs_reboot = true;
+        }
+    }
+    else
+    {
+        if (index == 0)            
+            result = (cfg_laser_enabled == false);          //  IIc
+        else if (index == 1)            
+            result = (cfg_laser_enabled == true);           //  Laser
+    }
+
+    return result;
+}
+
 //  Save / Exit / Load defaults
 static bool DELAYED_COPY_CODE(exit_command)(char * command_name, int index, bool update, bool selected)
 {
@@ -505,15 +533,20 @@ static bool DELAYED_COPY_CODE(exit_command)(char * command_name, int index, bool
     {
         if (index == 0)
         {
+            //  Leave the screen
+            s_show_menu_screen = false;
+            
+            //  Wait for the buton to come up to prevent config reset at boot
+            while (gpio_get(PIN_BUTTON))
+            {
+            }
+
             //  Exit
             if (s_save_required)
                 config_save();
 
             if (s_needs_reboot)
                 software_reset();
-
-            //  Leave the screen
-            s_show_menu_screen = false;
         }
     }
 
@@ -578,6 +611,8 @@ struct menu_commands DELAYED_COPY_DATA(a2c_menu_items_aux)[] =
     { "TONE:", { {"OFF", tone_command }, {"ON", tone_command }, {"", NULL } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
 #endif
+    { "TYPE:", { {"IIC", machine_command }, {"LASER", machine_command }, {"", NULL } } },
+    { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
     { "DEBUG:", { {"OFF", debug_command }, {"ON", debug_command }, {"", NULL } } },
     { "", { {"", NULL }, {"", NULL }, {"", NULL } } },
     { "SET:", { {"SAVE", config_command }, {"DEFAULT", config_command }, {"BACK", config_command } } },
@@ -1461,7 +1496,18 @@ void __time_critical_func(a2c_init)()
     // PIO setup
     // Load the a2c_input program, and configure a free state machine to run the program.
     s_pio = pio0;
-    int a2c_offset = pio_add_program(s_pio, &a2c_input_program);
+    int a2c_offset;
+    
+    if (cfg_laser_enabled == true)
+    {
+        //  If the machine is a Laser, we load a different program
+        a2c_offset = pio_add_program(s_pio, &a2c_input_laser_program);
+    }
+    else
+    {
+        a2c_offset = pio_add_program(s_pio, &a2c_input_program);
+    }
+
     s_a2c_sm = pio_claim_unused_sm(s_pio, true);
 
     //  Setup a repeating timer to keep an eye on WNDW an see if it has stopped
@@ -1477,8 +1523,15 @@ void __time_critical_func(a2c_init)()
     //  Enable the interupt
     gpio_set_irq_enabled_with_callback(PIN_WNDW, GPIO_IRQ_EDGE_FALL, true, WNDW_irq_callback);      //  Interrupt on WNDW going low
 
-    //  Start the PIO program
-    a2c_input_program_init(s_pio, s_a2c_sm, a2c_offset, PIO_INPUT_PIN_BASE);
+    //  Start the PIO program, Laser has different PIO program
+    if (cfg_laser_enabled == true)
+    {
+        a2c_input_laser_program_init(s_pio, s_a2c_sm, a2c_offset, PIO_INPUT_PIN_BASE);
+    }
+    else
+    {
+        a2c_input_program_init(s_pio, s_a2c_sm, a2c_offset, PIO_INPUT_PIN_BASE);
+    }
 }
 
 #ifdef FEATURE_A2_AUDIO

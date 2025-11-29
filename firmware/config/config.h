@@ -126,6 +126,7 @@ extern volatile uint8_t color_mode;
 #endif
 
 extern          bool cfg_audio_enabled;
+extern          bool cfg_laser_enabled;
 
 extern void set_machine         (compat_t machine);
 extern void config_load         (void);

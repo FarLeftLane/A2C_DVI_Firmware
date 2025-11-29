@@ -55,7 +55,9 @@ rendering_fx_t     cfg_rendering_fx = FX_ENABLED;
 DviVideoMode_t     cfg_video_mode;
 ToggleSwitchMode_t input_switch_mode = ModeSwitchCycleVideo;
 bool               cfg_audio_enabled = false;
+bool               cfg_laser_enabled = false;
 #define            CFG_AUDIO_ENABLE_BIT 0x01
+#define            CFG_LASER_ENABLE_BIT 0x01
 
 // A block of flash is reserved for storing configuration persistently across power cycles
 // and firmware updates.
@@ -99,6 +101,7 @@ struct __attribute__((__packed__)) config_t
     // Add new fields after here. When reading the config use the IS_STORED_IN_CONFIG macro
     // to determine if the field you're looking for is actually present in the stored config.
     uint8_t  audio_config;
+    uint8_t  laser_config;
 };
 
 // 'FONT'
@@ -397,6 +400,12 @@ void config_load(void)
         cfg_audio_enabled = ((cfg->audio_config & CFG_AUDIO_ENABLE_BIT) != 0);
     else
         cfg_audio_enabled = false;                        //  By default, audio is off, user can enable
+
+    //  enable audio
+    if(IS_STORED_IN_CONFIG(cfg, laser_config))
+        cfg_laser_enabled = ((cfg->laser_config & CFG_LASER_ENABLE_BIT) != 0);
+    else
+        cfg_laser_enabled = false;                        //  By default, audio is off, user can enable
 }
 
 void config_load_defaults(void)
@@ -427,6 +436,7 @@ void config_load_defaults(void)
     cfg_videx_selection     = 0;
 
     cfg_audio_enabled       = false;                        //  By default, audio is off, user can enable
+    cfg_laser_enabled       = false;                        //  By default, laser is off, user can enable
 
     config_setflags();
     set_machine(detected_machine);
@@ -466,6 +476,7 @@ void DELAYED_COPY_CODE(config_save)(void)
     new_config->ramworks_enabled        = IS_IFLAG(IFLAGS_RAMWORKS);
 
     new_config->audio_config            = (cfg_audio_enabled == true) ? CFG_AUDIO_ENABLE_BIT : 0;
+    new_config->laser_config            = (cfg_laser_enabled == true) ? CFG_LASER_ENABLE_BIT : 0;
 
     // update flash
     config_flash_write(cfg, (uint8_t *)new_config, new_config_size);

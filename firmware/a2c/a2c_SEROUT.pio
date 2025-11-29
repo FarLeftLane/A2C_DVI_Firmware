@@ -38,9 +38,8 @@ public entry_point:
     wait 1 pin 2 [8]        ; Wait for WNDW to go low, 8 delay is imperical to debuounce
     wait 0 pin 2 [8]
 
-headerloop:                 ; We skip the first 7 bits afer WNDW goes low
-    wait 1 pin 1 [2]
-    wait 0 pin 1 [2]        ; Sample bit on the clock going low, 2 delay is imperical
+    wait 1 pin 1 [2]        ; We skip the first bit afer WNDW goes low
+    wait 0 pin 1 [2]        ; 2 delay is imperical
 
 wordloop:
     set y, 31               ; Move 32 bits
@@ -84,4 +83,73 @@ static inline void a2c_input_program_init(PIO pio, uint sm, uint offset, uint pi
     pio_sm_init(pio, sm, offset, &c);
     pio_sm_set_enabled(pio, sm, true);
 }
+
+%}
+
+; The Laser128 has a slightly diffewrent timing and the phase needs to be 
+; aligned, so an additional clock is consumed after WNDW
+
+.program a2c_input_laser
+
+; Read SEROUT as bits using 14M as the clock and push groups of bits into the RX FIFO.
+; - IN pin 0 is the data pin (SEROUT)
+; - IN pin 1 is the clock pin (14M)
+; - Autopush is enabled, threshold 32
+;
+; Wait for WNDW to go low and then sample data with each falling clock edge
+
+public entry_point:
+    set x, 17               ; Move 18 * 32 = 576 bits
+
+    wait 1 pin 2 [8]        ; Wait for WNDW to go low, 8 delay is imperical to debuounce
+    wait 0 pin 2 [8]
+
+    wait 1 pin 1 [2]        ; We skip the first two bits afer WNDW goes low
+    wait 0 pin 1 [2]        ; 2 delay is imperical
+    wait 1 pin 1 [2]
+    wait 0 pin 1 [2]        ; 2 delay is imperical
+
+wordloop:
+    set y, 31               ; Move 32 bits
+    
+bitloop:
+    wait 1 pin 1 [2]
+    wait 0 pin 1 [2]        ; Sample bit on the clock going low
+    in pins, 1
+    jmp y-- bitloop         ; loop
+
+    jmp x-- wordloop
+
+    jmp entry_point
+
+% c-sdk {
+static inline void a2c_input_laser_program_init(PIO pio, uint sm, uint offset, uint pin) {
+    pio_sm_config c = a2c_input_laser_program_get_default_config(offset);
+
+    // Set the IN base pin to the provided `pin` parameter. This is the data
+    // pin, and the next-numbered GPIO is used as the clock pin.
+    sm_config_set_in_pins(&c, pin);
+    // Set the pin directions to input at the PIO
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 3, false);
+    // Connect these GPIOs to this PIO block
+    pio_gpio_init(pio, pin);                //  SEROUT
+    pio_gpio_init(pio, pin + 1);            //  14M
+    pio_gpio_init(pio, pin + 2);            //  Conenct WNDW as well
+
+    // Shifting to right matches the format that the hires decode tables need
+    sm_config_set_in_shift(
+        &c,
+        false, // Shift-to-right = false
+        true,  // Autopush enabled
+        32     // Autopush threshold = 32
+    );
+
+    // We only receive, so disable the TX FIFO to make the RX FIFO deeper.
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+    // Load our configuration, and start the program from the beginning
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+
 %}
